@@ -46,6 +46,15 @@ executable bench-runner
   build-Depends:
       base
     , bench-report
+    , bench-show
+    , streamly-coreutils
+    , streamly
+    , streamly-process
+    , streamly-shell
+    , filepath
+    , csv
+    , containers
+    , transformers
 
 executable bench-report
   default-language: Haskell2010
