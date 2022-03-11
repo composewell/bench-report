@@ -1,7 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Main where
+module BenchReport where
 
 import Control.Exception (catch, ErrorCall(..))
 import Control.Monad (mzero)
@@ -240,14 +240,8 @@ benchShow Options{..} cfg func inp out =
     then func cfg {outputDir = Just out} inp
     else ignoringErr $ report inp Nothing cfg
 
-main :: IO ()
-main = do
-    res <- parseOptions
-    case res of
-        Nothing -> do
-            putStrLn "cannot parse options"
-            return ()
-        Just opts@Options{fields = fs, benchType = btype} ->
+runBenchReport :: Options -> IO ()
+runBenchReport opts@Options{fields = fs, benchType = btype} =
             let cfg = defaultConfig
                     { presentation = Groups (diffStyle opts)
                     , selectBenchmarks = selectBench opts

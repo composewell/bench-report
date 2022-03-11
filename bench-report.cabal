@@ -42,6 +42,7 @@ executable bench-runner
   hs-source-dirs: bin
   main-is: BenchRunner.hs
   other-modules: BuildLib
+               , BenchReport
   buildable: True
   build-Depends:
       base
@@ -56,14 +57,4 @@ executable bench-runner
     , containers
     , transformers
     , directory
-
-executable bench-report
-  default-language: Haskell2010
-  ghc-options: -Wall
-  hs-source-dirs: .
-  main-is: BenchReport.hs
-  buildable: True
-  build-Depends:
-      base >= 4.9 && < 4.17
-    , bench-show >= 0.3.2 && < 0.4
-    , transformers >= 0.4  && < 0.6
+    , bench-show
