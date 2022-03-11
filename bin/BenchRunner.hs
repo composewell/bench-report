@@ -173,6 +173,10 @@ runBenchTarget packageName component targetName = do
             liftIO $ createDirectoryIfMissing True outputDir
             invokeTastyBench targetProg targetName outputFile
 
+runBenchTargets :: String -> String -> [String] -> Context ()
+runBenchTargets packageName component targets =
+    for_ targets $ runBenchTarget packageName component
+
 --------------------------------------------------------------------------------
 -- Main
 --------------------------------------------------------------------------------
