@@ -10,7 +10,7 @@ import Control.Monad (when, unless)
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.Map (Map)
 import Utils.QuasiQuoter (line)
-import Control.Monad.Trans.State.Strict (StateT, get, gets, put)
+import Control.Monad.Trans.State.Strict (StateT, get, gets, put, modify)
 import Data.List (isSuffixOf, nub, sort, intersperse)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (takeFileName, takeDirectory)
@@ -222,6 +222,29 @@ runReports benchmarks = do
                         , BenchReport.diffStyle = diffStyle
                         , BenchReport.cutOffPercent = cutOffPercent
                         }
+
+-------------------------------------------------------------------------------
+-- Execution bootstrapping
+-------------------------------------------------------------------------------
+
+bootstrap :: Context ()
+bootstrap = do
+    modify $ \conf -> conf {config_USE_GIT_CABAL = True}
+    setCommonVars
+    -- XXX Temporarily skipping comparision vars
+    modify $ \conf -> conf {config_APPEND = False}
+    modify $ \conf -> conf {config_LONG = False}
+    modify $ \conf -> conf {config_RAW = False}
+    modify $ \conf -> conf {config_SORT_BY_NAME = False}
+    modify $ \conf -> conf {config_GRAPH = False}
+    modify $ \conf -> conf {config_MEASURE = True}
+    modify $ \conf -> conf {config_GAUGE_ARGS = ""}
+    modify
+        $ \conf ->
+              conf
+                  { config_CABAL_BUILD_OPTIONS =
+                        "--flag fusion-plugin --flag limit-build-mem"
+                  }
 
 --------------------------------------------------------------------------------
 -- Main

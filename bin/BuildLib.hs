@@ -80,6 +80,8 @@ data Configuration =
         , config_SORT_BY_NAME :: Bool
         , config_GRAPH :: Bool
         , config_SILENT :: Bool
+        , config_RAW :: Bool
+        , config_MEASURE :: Bool
         }
 
 -- Clean this, use both ReaderT and StateT!
