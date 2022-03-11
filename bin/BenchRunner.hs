@@ -24,6 +24,8 @@ import qualified BenchReport
 import Utils
 import BuildLib
 
+import Prelude hiding (compare)
+
 --------------------------------------------------------------------------------
 -- CLI
 --------------------------------------------------------------------------------
@@ -325,6 +327,53 @@ buildAndRunTargets = do
 -------------------------------------------------------------------------------
 -- Run reports
 -------------------------------------------------------------------------------
+
+buildComparisionReslts :: String -> [String] -> Context ()
+buildComparisionReslts name constituents = do
+    liftIO $ createDirectoryIfMissing True [line| charts/$name |]
+    let destFile = [line| charts/$name/results.csv |]
+    liftIO $ runVerbose [line| : > $destFile |]
+    for_ constituents
+        $ \j ->
+              liftIO
+                  $ runVerbose
+                        [line| cat "charts/$j/results.csv" >> $destFile |]
+
+runFinalReports :: Context ()
+runFinalReports = do
+    compare <- gets config_COMPARE
+    targets <- gets config_TARGETS
+    let targetsStr = unwords targets
+    dynCmpGrpName <-
+        liftIO
+            $ (++ "_cmp")
+            <$> runUtf8' [line| echo "$targetsStr" | sed -e 's/ /_/g' |]
+    if compare
+    then do
+        modify $ \conf -> conf {config_COMPARISON_REPORTS = targets}
+        buildComparisionReslts dynCmpGrpName targets
+    else modify $ \conf -> conf {config_COMPARISON_REPORTS = []}
+    comparisions <- gets config_COMPARISIONS
+    targetsOrig <- gets config_TARGETS_ORIG
+    for_ (Map.keys comparisions)
+        $ \i ->
+              when (i `elem` targetsOrig)
+                  $ do
+                      modify
+                          $ \conf ->
+                                conf
+                                    { config_COMPARISON_REPORTS =
+                                          config_COMPARISON_REPORTS conf ++ [i]
+                                    }
+                      buildComparisionReslts i (comparisions Map.! i)
+    raw <- gets config_RAW
+    comparisionReports <- gets config_COMPARISON_REPORTS
+    when (not raw)
+        $ do
+            runReports targets
+            runReports comparisionReports
+            when compare
+                $ liftIO $ runVerbose [line| rm -rf "charts/$dynCmpGrpName" |]
 
 --------------------------------------------------------------------------------
 -- Main

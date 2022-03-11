@@ -90,6 +90,8 @@ data Configuration =
         , config_SET_TARGETS :: [String]
         , config_ALL_GRP :: [String]
         , config_INFINITE_GRP :: [String]
+        , config_COMPARISON_REPORTS :: [String]
+        , config_COMPARE :: Bool
         }
 
 -- Clean this, use both ReaderT and StateT!
