@@ -55,6 +55,7 @@ executable bench-runner
     , csv
     , containers
     , transformers
+    , directory
 
 executable bench-report
   default-language: Haskell2010

@@ -64,6 +64,7 @@ data Configuration =
         , config_SLOW :: Bool
         , config_USE_GIT_CABAL :: Bool
         , config_DEFAULT_TARGETS :: [String]
+        , config_LONG :: Bool
         }
 
 -- Clean this, use both ReaderT and StateT!
