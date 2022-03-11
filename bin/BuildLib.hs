@@ -68,6 +68,7 @@ data Configuration =
         , config_BENCH_PREFIX :: String
         , config_GAUGE_ARGS :: String
         , config_BENCHMARK_PACKAGE_VERSION :: String
+        , config_APPEND :: Bool
         }
 
 -- Clean this, use both ReaderT and StateT!

@@ -8,6 +8,7 @@ import BuildLib
 --------------------------------------------------------------------------------
 
 import Data.Foldable (for_)
+import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.Map (Map)
 import Utils.QuasiQuoter (line)
@@ -176,6 +177,14 @@ runBenchTarget packageName component targetName = do
 runBenchTargets :: String -> String -> [String] -> Context ()
 runBenchTargets packageName component targets =
     for_ targets $ runBenchTarget packageName component
+
+backupOutputFile :: String -> Context ()
+backupOutputFile benchName = do
+    let outputFile = benchOutputFile benchName
+    append <- gets config_APPEND
+    exists <- liftIO $ Test.test outputFile Test.exists
+    when (not append && exists)
+        $ liftIO $ run [line| mv -f -v $outputFile $outputFile.prev |]
 
 --------------------------------------------------------------------------------
 -- Main
