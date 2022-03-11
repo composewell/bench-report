@@ -1,8 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 
-import BuildLib
-
 --------------------------------------------------------------------------------
 -- Imports
 --------------------------------------------------------------------------------
@@ -23,6 +21,7 @@ import qualified Streamly.Coreutils.FileTest as Test
 import qualified Data.Map as Map
 
 import Utils
+import BuildLib
 
 --------------------------------------------------------------------------------
 -- CLI
@@ -178,6 +177,9 @@ runBenchTargets :: String -> String -> [String] -> Context ()
 runBenchTargets packageName component targets =
     for_ targets $ runBenchTarget packageName component
 
+runBenchesComparing :: [String] -> Context ()
+runBenchesComparing benchList = undefined
+
 backupOutputFile :: String -> Context ()
 backupOutputFile benchName = do
     let outputFile = benchOutputFile benchName
@@ -185,6 +187,20 @@ backupOutputFile benchName = do
     exists <- liftIO $ Test.test outputFile Test.exists
     when (not append && exists)
         $ liftIO $ run [line| mv -f -v $outputFile $outputFile.prev |]
+
+runMeasurements :: [String] -> Context ()
+runMeasurements benchList = do
+    for_ benchList backupOutputFile
+    commitCompare <- gets config_COMMIT_COMPARE
+    buildBench <- gets config_BUILD_BENCH
+    benchPackageName <- gets config_BENCHMARK_PACKAGE_NAME
+    targets <- gets config_TARGETS
+    if commitCompare
+    then runBenchesComparing benchList
+    else do
+        runBuild buildBench benchPackageName "bench" targets
+        -- XXX What is target_exe_extra_args here?
+        runBenchTargets benchPackageName "b" benchList
 
 --------------------------------------------------------------------------------
 -- Main
