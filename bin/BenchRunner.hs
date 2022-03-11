@@ -14,7 +14,7 @@ import Utils.QuasiQuoter (line)
 import Control.Monad.Trans.State.Strict (StateT, get, gets, put)
 import Data.List (isSuffixOf, nub, sort, intersperse)
 import System.Directory (createDirectoryIfMissing)
-import System.FilePath (takeFileName)
+import System.FilePath (takeFileName, takeDirectory)
 import Data.Function ((&))
 
 import qualified Streamly.Internal.Data.Stream.IsStream as Stream
@@ -154,6 +154,24 @@ invokeTastyBench targetProg targetName outputFile = do
             $ runUtf8 [line| $targetProg -l $match | grep "^All"  |]
             & Stream.toList
     for_ benchmarkNames $ \name -> benchExecOne targetProg name gaugeArgs
+
+runBenchTarget :: String -> String -> String -> Context ()
+runBenchTarget packageName component targetName = do
+    benchmarkPackageVersion <- gets config_BENCHMARK_PACKAGE_VERSION
+    mTargetProg <-
+        cabalTargetProg
+            [line| $packageName-$benchmarkPackageVersion |]
+            component
+            targetName
+    case mTargetProg of
+        Nothing ->
+            liftIO $ die [line| Cannot find executable for target $targetName |]
+        Just targetProg -> do
+            liftIO $ putStrLn "Running executable $targetName ..."
+            let outputFile = benchOutputFile targetName
+                outputDir = takeDirectory outputFile
+            liftIO $ createDirectoryIfMissing True outputDir
+            invokeTastyBench targetProg targetName outputFile
 
 --------------------------------------------------------------------------------
 -- Main
