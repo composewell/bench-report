@@ -83,6 +83,13 @@ data Configuration =
         , config_RAW :: Bool
         , config_MEASURE :: Bool
         , config_DEFAULT_FIELDS :: [String]
+        , config_COMMON_FIELDS :: [String]
+        , config_ALL_FIELDS :: [String]
+        , config_TARGETS_ORIG :: [String]
+        , config_BUILD_FLAGS :: String
+        , config_SET_TARGETS :: [String]
+        , config_ALL_GRP :: [String]
+        , config_INFINITE_GRP :: [String]
         }
 
 -- Clean this, use both ReaderT and StateT!

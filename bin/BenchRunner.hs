@@ -253,6 +253,79 @@ postCLIParsing = do
     when (null fields) $ modify $ \conf -> conf {config_FIELDS = defFields}
     setDerivedVars
 
+-------------------------------------------------------------------------------
+-- Determine targets
+-------------------------------------------------------------------------------
+
+-- Skipping help text
+
+onlyRealBenchmarks :: Context [String]
+onlyRealBenchmarks = do
+    targets <- gets config_TARGETS
+    comparisionKeys <- Map.keys <$> gets config_COMPARISIONS
+    return $ filter (\x -> not (x `elem` comparisionKeys)) targets
+
+postTargetDetermination :: Context ()
+postTargetDetermination = do
+    modify
+        $ \conf ->
+              conf
+                  { config_COMMON_FIELDS =
+                        ["allocated", "bytescopied", "cputime", "maxrss"]
+                  }
+    -- Not caring about USE_GAUGE
+    modify $ \conf -> conf {config_ALL_FIELDS = config_COMMON_FIELDS conf}
+
+flagLongSetup :: Context ()
+flagLongSetup = do
+    long <- gets config_LONG
+    targets <- gets config_TARGETS
+    let targetsStr = unwords targets
+    when (long && not (null targets))
+        $ liftIO
+        $ die [line| Cannot specify benchmarks [$targetsStr] with --long |]
+    when long
+        $ modify $ \conf -> conf {config_TARGETS = config_INFINITE_GRP conf}
+
+setupTargets :: Context ()
+setupTargets = do
+    allGrp <- gets config_ALL_GRP
+    setTargets <- gets config_SET_TARGETS
+    modify
+        $ \conf ->
+              conf
+                  {config_DEFAULT_TARGETS = allGrp, config_TARGETS = setTargets}
+    modify $ \conf -> conf {config_TARGETS_ORIG = config_TARGETS conf}
+    realBenchmarks <- onlyRealBenchmarks
+    modify $ \conf -> conf {config_TARGETS = realBenchmarks}
+
+postSettingUpTargets :: Context ()
+postSettingUpTargets = do
+    silent <- gets config_SILENT
+    targetsStr <- unwords <$> gets config_TARGETS
+    unless silent
+        $ liftIO $ putStrLn [line| "Using benchmark suites [$targetsStr]" |]
+
+-------------------------------------------------------------------------------
+-- Build and run targets
+-------------------------------------------------------------------------------
+
+buildAndRunTargets :: Context ()
+buildAndRunTargets = do
+    cabalExecutable <- gets config_CABAL_EXECUTABLE
+    buildFlags <- gets config_BUILD_FLAGS
+    cabalBuildOptions <- gets config_CABAL_BUILD_OPTIONS
+    modify
+        $ \conf ->
+              conf
+                  { config_BUILD_BENCH =
+                        [line| $cabalExecutable v2-build $buildFlags $cabalBuildOptions --enable-benchmarks |]
+                  }
+
+-------------------------------------------------------------------------------
+-- Run reports
+-------------------------------------------------------------------------------
+
 --------------------------------------------------------------------------------
 -- Main
 --------------------------------------------------------------------------------
