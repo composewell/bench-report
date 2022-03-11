@@ -6,7 +6,7 @@
 --------------------------------------------------------------------------------
 
 import Data.Foldable (for_)
-import Control.Monad (when)
+import Control.Monad (when, unless)
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.Map (Map)
 import Utils.QuasiQuoter (line)
@@ -19,6 +19,7 @@ import Data.Function ((&))
 import qualified Streamly.Internal.Data.Stream.IsStream as Stream
 import qualified Streamly.Coreutils.FileTest as Test
 import qualified Data.Map as Map
+import qualified BenchReport
 
 import Utils
 import BuildLib
@@ -201,6 +202,26 @@ runMeasurements benchList = do
         runBuild buildBench benchPackageName "bench" targets
         -- XXX What is target_exe_extra_args here?
         runBenchTargets benchPackageName "b" benchList
+
+runReports :: [String] -> Context ()
+runReports benchmarks = do
+    silent <- gets config_SILENT
+    graphs <- gets config_GRAPH
+    sortByName <- gets config_SORT_BY_NAME
+    diffStyle <- gets config_BENCH_DIFF_STYLE
+    cutOffPercent <- gets config_BENCH_CUTOFF_PERCENT
+    fields <- gets config_FIELDS
+    for_ benchmarks
+        $ \i -> liftIO $ do
+              unless silent $ putStrLn [line| Generating reports for $i... |]
+              BenchReport.runBenchReport
+                  $ BenchReport.defaultOptions
+                        { BenchReport.genGraphs = graphs
+                        , BenchReport.sortByName = sortByName
+                        , BenchReport.fields = fields
+                        , BenchReport.diffStyle = diffStyle
+                        , BenchReport.cutOffPercent = cutOffPercent
+                        }
 
 --------------------------------------------------------------------------------
 -- Main

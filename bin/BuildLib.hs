@@ -34,6 +34,7 @@ import Data.Map (Map)
 import Utils.QuasiQuoter (line)
 import Control.Monad.Trans.State.Strict (StateT, get, gets, put)
 import Data.List (isSuffixOf, nub, sort, intersperse)
+import BenchShow.Internal.Common (GroupStyle)
 
 import qualified Streamly.Coreutils.FileTest as Test
 import qualified Data.Map as Map
@@ -73,6 +74,12 @@ data Configuration =
         , config_COMMIT_COMPARE :: Bool
         , config_BUILD_BENCH :: String
         , config_BENCHMARK_PACKAGE_NAME :: String
+        , config_FIELDS :: [String]
+        , config_BENCH_CUTOFF_PERCENT :: Double
+        , config_BENCH_DIFF_STYLE :: GroupStyle
+        , config_SORT_BY_NAME :: Bool
+        , config_GRAPH :: Bool
+        , config_SILENT :: Bool
         }
 
 -- Clean this, use both ReaderT and StateT!
