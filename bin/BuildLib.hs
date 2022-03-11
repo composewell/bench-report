@@ -22,6 +22,7 @@ module BuildLib
     , cabalTargetProg
     , setCommonVars
     , setDerivedVars
+    , runBuild
     ) where
 
 --------------------------------------------------------------------------------
@@ -227,3 +228,10 @@ setDerivedVars = do
     let withCompiler1 = config_CABAL_WITH_COMPILER conf1
     ghcVersion <- liftIO $ runUtf8' [line| $withCompiler1 --numeric-version |]
     put $ conf {config_GHC_VERSION = ghcVersion}
+
+runBuild :: String -> String -> String -> [String] -> Context ()
+runBuild buildProg package componentPrefix components = do
+    let componentsWithContext =
+            map (\c -> [line| $package:$componentPrefix:$c |]) components
+        componentsWithContextStr = unwords componentsWithContext
+    liftIO $ runVerbose [line| $buildProg $componentsWithContextStr |]
