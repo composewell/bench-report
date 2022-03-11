@@ -7,6 +7,7 @@ import BuildLib
 -- Imports
 --------------------------------------------------------------------------------
 
+import Data.Foldable (for_)
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.Map (Map)
 import Utils.QuasiQuoter (line)
@@ -14,7 +15,9 @@ import Control.Monad.Trans.State.Strict (StateT, get, gets, put)
 import Data.List (isSuffixOf, nub, sort, intersperse)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (takeFileName)
+import Data.Function ((&))
 
+import qualified Streamly.Internal.Data.Stream.IsStream as Stream
 import qualified Streamly.Coreutils.FileTest as Test
 import qualified Data.Map as Map
 
@@ -129,6 +132,28 @@ tail -n +2 $outputFile.tmp
 
     benchRTSOptions = undefined
     benchSpeedOptions = undefined
+
+invokeTastyBench :: String -> String -> String -> Context ()
+invokeTastyBench targetProg targetName outputFile = do
+    long <- gets config_LONG
+    benchPrefix <- gets config_BENCH_PREFIX
+    gaugeArgs <- gets config_GAUGE_ARGS
+    escapedBenchPrefix <-
+        liftIO $ runUtf8' [line| echo "$benchPrefix" | sed -e 's/\//\\\//g' |]
+    let match =
+            if long
+            then "-p /$target_name\\/o-1-space/"
+            else if null benchPrefix
+                 then ""
+                 else "-p /$escapedBenchPrefix/"
+    liftIO
+        $ runVerbose
+              [line| echo "Name,cpuTime,2*Stdev (ps),Allocated,bytesCopied,maxrss" >> $outputFile |]
+    benchmarkNames <-
+        liftIO
+            $ runUtf8 [line| $targetProg -l $match | grep "^All"  |]
+            & Stream.toList
+    for_ benchmarkNames $ \name -> benchExecOne targetProg name gaugeArgs
 
 --------------------------------------------------------------------------------
 -- Main

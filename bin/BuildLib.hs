@@ -65,6 +65,8 @@ data Configuration =
         , config_USE_GIT_CABAL :: Bool
         , config_DEFAULT_TARGETS :: [String]
         , config_LONG :: Bool
+        , config_BENCH_PREFIX :: String
+        , config_GAUGE_ARGS :: String
         }
 
 -- Clean this, use both ReaderT and StateT!
