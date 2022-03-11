@@ -246,6 +246,13 @@ bootstrap = do
                         "--flag fusion-plugin --flag limit-build-mem"
                   }
 
+postCLIParsing :: Context ()
+postCLIParsing = do
+    fields <- gets config_FIELDS
+    defFields <- gets config_DEFAULT_FIELDS
+    when (null fields) $ modify $ \conf -> conf {config_FIELDS = defFields}
+    setDerivedVars
+
 --------------------------------------------------------------------------------
 -- Main
 --------------------------------------------------------------------------------

@@ -82,6 +82,7 @@ data Configuration =
         , config_SILENT :: Bool
         , config_RAW :: Bool
         , config_MEASURE :: Bool
+        , config_DEFAULT_FIELDS :: [String]
         }
 
 -- Clean this, use both ReaderT and StateT!
