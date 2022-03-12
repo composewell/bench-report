@@ -23,6 +23,7 @@ module BuildLib
     , setCommonVars
     , setDerivedVars
     , runBuild
+    , defaultConfig
     ) where
 
 --------------------------------------------------------------------------------
@@ -34,7 +35,7 @@ import Data.Map (Map)
 import Utils.QuasiQuoter (line)
 import Control.Monad.Trans.State.Strict (StateT, get, gets, put)
 import Data.List (isSuffixOf, nub, sort, intersperse)
-import BenchShow.Internal.Common (GroupStyle)
+import BenchShow.Internal.Common (GroupStyle(..))
 
 import qualified Streamly.Coreutils.FileTest as Test
 import qualified Data.Map as Map
@@ -92,6 +93,56 @@ data Configuration =
         , config_INFINITE_GRP :: [String]
         , config_COMPARISON_REPORTS :: [String]
         , config_COMPARE :: Bool
+        }
+
+defaultConfig :: Configuration
+defaultConfig =
+    Configuration
+        { config_RUNNING_TESTS = False
+        , config_RUNNING_BENCHMARKS = True
+        , config_RUNNING_DEVBUILD = False
+        , config_GROUP_TARGETS = Map.empty
+        , config_COMPARISIONS = Map.empty
+        , config_INDIVIDUAL_TARGETS = []
+        , config_TARGETS = []
+        , config_TEST_QUICK_MODE = False
+        , config_GHC_VERSION = ""
+        , config_BUILD_DIR = ""
+        , config_CABAL_BUILD_OPTIONS = ""
+        , config_CABAL_WITH_COMPILER = ""
+        , config_CABAL_EXECUTABLE = ""
+        , config_RTS_OPTIONS = ""
+        , config_TARGET_EXE_ARGS = ""
+        , config_QUICK_MODE = False
+        , config_SLOW = False
+        , config_USE_GIT_CABAL = True
+        , config_DEFAULT_TARGETS = []
+        , config_LONG = False
+        , config_BENCH_PREFIX = ""
+        , config_GAUGE_ARGS = ""
+        , config_BENCHMARK_PACKAGE_VERSION = "0.0.0"
+        , config_APPEND = False
+        , config_COMMIT_COMPARE = False
+        , config_BUILD_BENCH = ""
+        , config_BENCHMARK_PACKAGE_NAME = "streamly-benchmarks"
+        , config_FIELDS = []
+        , config_BENCH_CUTOFF_PERCENT = 0
+        , config_BENCH_DIFF_STYLE = PercentDiff
+        , config_SORT_BY_NAME = False
+        , config_GRAPH = False
+        , config_SILENT = False
+        , config_RAW = False
+        , config_MEASURE = True
+        , config_DEFAULT_FIELDS = []
+        , config_COMMON_FIELDS = []
+        , config_ALL_FIELDS = []
+        , config_TARGETS_ORIG = []
+        , config_BUILD_FLAGS = ""
+        , config_SET_TARGETS = []
+        , config_ALL_GRP = []
+        , config_INFINITE_GRP = []
+        , config_COMPARISON_REPORTS = []
+        , config_COMPARE = False
         }
 
 -- Clean this, use both ReaderT and StateT!
@@ -155,7 +206,7 @@ listTargetGroups = do
     pretty k v = k ++ " [" ++ concat (intersperse ", " v) ++ "]"
 
 -- XXX pass as arg?
-setTargets :: Context ()
+setTargets :: Context [String]
 setTargets = do
     conf <- get
     let defTargets = config_DEFAULT_TARGETS conf
@@ -166,8 +217,7 @@ setTargets = do
             if null targets
             then defTargets
             else flatten grpTargets comparisions targets
-        newConf = conf {config_TARGETS = newTargets}
-    put newConf
+    return newTargets
 
     where
 

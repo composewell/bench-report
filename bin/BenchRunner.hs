@@ -6,16 +6,17 @@
 --------------------------------------------------------------------------------
 
 import Data.Foldable (for_)
-import Control.Monad (when, unless)
+import Control.Monad (when, unless, void)
 import Control.Monad.IO.Class (MonadIO(..))
-import Data.Map (Map)
 import Utils.QuasiQuoter (line)
-import Control.Monad.Trans.State.Strict (StateT, get, gets, put, modify)
-import Data.List (isSuffixOf, nub, sort, intersperse)
+import Control.Monad.Trans.State.Strict (execStateT, gets, modify)
+import Data.List (intersperse)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (takeFileName, takeDirectory)
 import Data.Function ((&))
+import BenchShow.Internal.Common (GroupStyle(..))
 
+import qualified Options.Applicative as OptParse
 import qualified Streamly.Internal.Data.Stream.IsStream as Stream
 import qualified Streamly.Coreutils.FileTest as Test
 import qualified Data.Map as Map
@@ -25,17 +26,76 @@ import Utils
 import BuildLib
 
 import Prelude hiding (compare)
+import Options.Applicative hiding (Parser)
+import Options.Applicative.Simple
 
 --------------------------------------------------------------------------------
 -- CLI
 --------------------------------------------------------------------------------
 
+cliOptions :: OptParse.Parser Configuration
+cliOptions =
+    Configuration <$> pure False <*> pure True <*> switch (long "dev-build")
+        <*> pure Map.empty
+        <*> pure Map.empty
+        <*> pure []
+        <*> (words <$> strOption (long "targets"))
+        <*> pure False
+        <*> pure ""
+        <*> pure ""
+        <*> strOption (long "cabal-build-options")
+        <*> strOption (long "with-compiler")
+        <*> pure ""
+        <*> strOption (long "rts-opts")
+        <*> pure ""
+        <*> switch (long "quick")
+        <*> switch (long "slow")
+        <*> pure True
+        <*> pure []
+        <*> switch (long "long")
+        <*> strOption (long "prefix")
+        <*> strOption (long "gauge-args")
+        <*> pure ""
+        <*> switch (long "append")
+        <*> switch (long "commit-compare")
+        <*> pure ""
+        <*> pure ""
+        <*> (words <$> strOption (long "fields"))
+        <*> (read <$> strOption (long "diff-cutoff-percent"))
+        <*> option (eitherReader diffStyleFromString) (long "diff-style")
+        <*> switch (long "sort-by-name")
+        <*> switch (long "graphs")
+        <*> switch (long "silent")
+        <*> switch (long "raw")
+        <*> unswitch (long "no-measure")
+        <*> pure []
+        <*> pure []
+        <*> pure []
+        <*> pure []
+        <*> pure ""
+        <*> pure []
+        <*> pure []
+        <*> pure []
+        <*> pure []
+        <*> switch (long "compare")
+
+    where
+
+    unswitch = flag True False
+
+    diffStyleFromString val =
+        case val of
+            "absolute" -> Right Absolute
+            "multiples" -> Right Multiples
+            "percent" -> Right PercentDiff
+            x -> Left $ "Unknown diff option: " ++ show x
+
 --------------------------------------------------------------------------------
 -- Reporting utility functions
 --------------------------------------------------------------------------------
 
-listComparisions :: Context ()
-listComparisions = do
+_listComparisions :: Context ()
+_listComparisions = do
     liftIO $ putStrLn "Comparison groups:"
     res <- gets config_COMPARISIONS
     let xs = Map.foldrWithKey (\k_ v_ b -> b ++ [pretty k_ v_]) [] res
@@ -68,7 +128,7 @@ benchExecOne benchExecPath benchName otherOptions = do
         quickerOptions = "--stdev 100"
         localRTSOptions = benchRTSOptions benchBaseName benchName
     quickMode <- gets config_QUICK_MODE
-    long <- gets config_LONG
+    long_ <- gets config_LONG
     globalRTSOptions <- gets config_RTS_OPTIONS
     let rtsOptions1 = [line| +RTS -T $localRTSOptions $globalRTSOptions -RTS  |]
     let quickBenchOptions =
@@ -80,7 +140,7 @@ benchExecOne benchExecPath benchName otherOptions = do
                      Just SuperQuick -> superQuickOptions
     -- Skipping STREAM_LEN as it is just a display trick
     let streamSize =
-            if long
+            if long_
             then Just (10000000 :: Int)
             else Nothing
     streamLen <-
@@ -138,17 +198,17 @@ tail -n +2 $outputFile.tmp
 
 invokeTastyBench :: String -> String -> String -> Context ()
 invokeTastyBench targetProg targetName outputFile = do
-    long <- gets config_LONG
+    long_ <- gets config_LONG
     benchPrefix <- gets config_BENCH_PREFIX
     gaugeArgs <- gets config_GAUGE_ARGS
     escapedBenchPrefix <-
         liftIO $ runUtf8' [line| echo "$benchPrefix" | sed -e 's/\//\\\//g' |]
     let match =
-            if long
-            then "-p /$target_name\\/o-1-space/"
+            if long_
+            then [line| -p /$targetName\\/o-1-space/ |]
             else if null benchPrefix
                  then ""
-                 else "-p /$escapedBenchPrefix/"
+                 else [line| -p /$escapedBenchPrefix/ |]
     liftIO
         $ runVerbose
               [line| echo "Name,cpuTime,2*Stdev (ps),Allocated,bytesCopied,maxrss" >> $outputFile |]
@@ -181,7 +241,7 @@ runBenchTargets packageName component targets =
     for_ targets $ runBenchTarget packageName component
 
 runBenchesComparing :: [String] -> Context ()
-runBenchesComparing benchList = undefined
+runBenchesComparing _ = undefined
 
 backupOutputFile :: String -> Context ()
 backupOutputFile benchName = do
@@ -280,23 +340,25 @@ postTargetDetermination = do
 
 flagLongSetup :: Context ()
 flagLongSetup = do
-    long <- gets config_LONG
+    isLong <- gets config_LONG
     targets <- gets config_TARGETS
     let targetsStr = unwords targets
-    when (long && not (null targets))
+    when (isLong && not (null targets))
         $ liftIO
         $ die [line| Cannot specify benchmarks [$targetsStr] with --long |]
-    when long
+    when isLong
         $ modify $ \conf -> conf {config_TARGETS = config_INFINITE_GRP conf}
 
 setupTargets :: Context ()
 setupTargets = do
-    allGrp <- gets config_ALL_GRP
-    setTargets <- gets config_SET_TARGETS
+    allGrp_ <- allGrp
+    setTargets_ <- setTargets
     modify
         $ \conf ->
               conf
-                  {config_DEFAULT_TARGETS = allGrp, config_TARGETS = setTargets}
+                  { config_DEFAULT_TARGETS = allGrp_
+                  , config_TARGETS = setTargets_
+                  }
     modify $ \conf -> conf {config_TARGETS_ORIG = config_TARGETS conf}
     realBenchmarks <- onlyRealBenchmarks
     modify $ \conf -> conf {config_TARGETS = realBenchmarks}
@@ -323,6 +385,9 @@ buildAndRunTargets = do
                   { config_BUILD_BENCH =
                         [line| $cabalExecutable v2-build $buildFlags $cabalBuildOptions --enable-benchmarks |]
                   }
+    measure <- gets config_MEASURE
+    targets <- gets config_TARGETS
+    when measure $ runMeasurements targets
 
 -------------------------------------------------------------------------------
 -- Run reports
@@ -376,8 +441,40 @@ runFinalReports = do
                 $ liftIO $ runVerbose [line| rm -rf "charts/$dynCmpGrpName" |]
 
 --------------------------------------------------------------------------------
+-- Pipeline
+--------------------------------------------------------------------------------
+
+runPipelineWithNewConfig :: Configuration -> Context ()
+runPipelineWithNewConfig conf1 = do
+    bootstrap
+    -- Merging config
+    modify
+        $ \conf ->
+              conf
+                  { config_CABAL_BUILD_OPTIONS =
+                        let prev = config_CABAL_BUILD_OPTIONS conf
+                            new = config_CABAL_BUILD_OPTIONS conf1
+                         in [line| $prev $new |]
+                  }
+    postCLIParsing
+    flagLongSetup
+    postTargetDetermination
+    setupTargets
+    postSettingUpTargets
+    buildAndRunTargets
+    runFinalReports
+
+--------------------------------------------------------------------------------
 -- Main
 --------------------------------------------------------------------------------
 
 main :: IO ()
-main = putStrLn "Hello World!"
+main = do
+    (conf, ()) <-
+        simpleOptions
+            "0.0.0"
+            "bench"
+            "A helper tool for benchmarking"
+            cliOptions
+            empty
+    void $ execStateT (runPipelineWithNewConfig conf) defaultConfig

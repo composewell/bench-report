@@ -58,3 +58,5 @@ executable bench-runner
     , transformers
     , directory
     , bench-show
+    , optparse-applicative
+    , optparse-simple
