@@ -9,8 +9,6 @@ module BuildLib
     , runVerbose
     , hasItem
     , silently
-    , testOnly
-    , benchOnly
     , devBuild
     , allGrp
     , allTargetGroups
@@ -24,6 +22,12 @@ module BuildLib
     , setDerivedVars
     , runBuild
     , defaultConfig
+    , Quickness(..)
+    , Target(..)
+    , catIndividuals
+    , catComparisions
+    , targetToString
+    , stringToTarget
     ) where
 
 --------------------------------------------------------------------------------
@@ -34,7 +38,7 @@ import Control.Monad.IO.Class (MonadIO(..))
 import Data.Map (Map)
 import Utils.QuasiQuoter (line)
 import Control.Monad.Trans.State.Strict (StateT, get, gets, put)
-import Data.List (isSuffixOf, nub, sort, intersperse)
+import Data.List (nub, sort, intersperse, isSuffixOf)
 import BenchShow.Internal.Common (GroupStyle(..))
 
 import qualified Streamly.Coreutils.FileTest as Test
@@ -46,27 +50,58 @@ import Utils
 -- Context
 --------------------------------------------------------------------------------
 
+data Target
+    = TGroup String
+    | TIndividual String
+    | TComparisionGroup String
+
+targetToString :: Target -> String
+targetToString (TIndividual x) = x
+targetToString (TGroup x) = x
+targetToString (TComparisionGroup x) = x
+
+stringToTarget :: String -> Target
+stringToTarget x
+    | "_cmp" `isSuffixOf` x = TComparisionGroup x
+    | "_grp" `isSuffixOf` x = TGroup x
+    | otherwise = TIndividual x
+
+catIndividuals :: [Target] -> [String]
+catIndividuals [] = []
+catIndividuals (t:ts) =
+    case t of
+        TIndividual x -> x : catIndividuals ts
+        _ -> catIndividuals ts
+
+catComparisions :: [Target] -> [String]
+catComparisions [] = []
+catComparisions (t:ts) =
+    case t of
+        TComparisionGroup x -> x : catComparisions ts
+        _ -> catComparisions ts
+
+data Quickness
+    = Quicker
+    | SuperQuick
+
 data Configuration =
     Configuration
-        { config_RUNNING_TESTS :: Bool
-        , config_RUNNING_BENCHMARKS :: Bool
-        , config_RUNNING_DEVBUILD :: Bool
+        { config_RUNNING_DEVBUILD :: Bool
         , config_GROUP_TARGETS :: Map String [String]
         , config_COMPARISIONS :: Map String [String]
         , config_INDIVIDUAL_TARGETS :: [String]
-        , config_TARGETS :: [String]
-        , config_TEST_QUICK_MODE :: Bool
+        , config_TARGETS :: [Target]
+        , config_TEST_QUICK_MODE :: Bool -- XXX This can be removed
         , config_GHC_VERSION :: String
         , config_BUILD_DIR :: String
         , config_CABAL_BUILD_OPTIONS :: String
         , config_CABAL_WITH_COMPILER :: String
         , config_CABAL_EXECUTABLE :: String
         , config_RTS_OPTIONS :: String
-        , config_TARGET_EXE_ARGS :: String
+        , config_TARGET_EXE_ARGS :: String -- XXX Can be removed, used in tests
         , config_QUICK_MODE :: Bool
         , config_SLOW :: Bool
         , config_USE_GIT_CABAL :: Bool
-        , config_DEFAULT_TARGETS :: [String]
         , config_LONG :: Bool
         , config_BENCH_PREFIX :: String
         , config_GAUGE_ARGS :: String
@@ -86,24 +121,88 @@ data Configuration =
         , config_DEFAULT_FIELDS :: [String]
         , config_COMMON_FIELDS :: [String]
         , config_ALL_FIELDS :: [String]
-        , config_TARGETS_ORIG :: [String]
-        , config_BUILD_FLAGS :: String
-        , config_SET_TARGETS :: [String]
-        , config_ALL_GRP :: [String]
-        , config_INFINITE_GRP :: [String]
-        , config_COMPARISON_REPORTS :: [String]
+        , config_BUILD_FLAGS :: String -- XXX Can be removed
+        , config_INFINITE_GRP :: [Target]
         , config_COMPARE :: Bool
+        , config_BENCH_SPEED_OPTIONS :: String -> String -> Maybe Quickness
+        , config_BENCH_RTS_OPTIONS :: String -> String -> String
         }
+
+groupTargets :: Map String [String]
+groupTargets =
+    Map.fromList
+        [ ( "base_stream_grp"
+          , [ "Data.Stream.StreamD"
+            , "Data.Stream.StreamK"
+            , "Data.Stream.StreamDK"
+            ])
+        , ("prelude_serial_grp", preudeSerialGrp)
+        , ("prelude_concurrent_grp", preudeConcurrentGrp)
+        , ( "prelude_other_grp"
+          , ["Prelude.Rate", "Prelude.Concurrent", "Prelude.Adaptive"])
+        , ( "array_grp"
+          , [ "Data.Array"
+            , "Data.Array.Foreign"
+            , "Data.Array.Prim"
+            , "Data.SmallArray"
+            , "Data.Array.Prim.Pinned"
+            ])
+        , ("base_parser_grp", ["Data.Parser.ParserD", "Data.Parser.ParserK"])
+        , ("parser_grp", ["Data.Fold", "Data.Parser"])
+        , ("list_grp ", [])
+        , ( "infinite_grp"
+          , preudeSerialGrp ++ preudeConcurrentGrp ++ ["Prelude.Rate"])
+        ]
+
+    where
+
+    preudeSerialGrp = ["Prelude.Serial", "Prelude.WSerial", "Prelude.ZipSerial"]
+    preudeConcurrentGrp =
+        [ "Prelude.Async"
+        , "Prelude.WAsync"
+        , "Prelude.Ahead"
+        , "Prelude.Parallel"
+        , "Prelude.ZipAsync"
+        ]
+
+individualTargers :: [String]
+individualTargers =
+    [ "Data.Unfold"
+    , "Unicode.Stream"
+    , "Unicode.Char"
+    , "Unicode.Utf8"
+    , "FileSystem.Handle"
+    ]
+
+env_COMPARISIONS :: Map String [String]
+env_COMPARISIONS =
+    Map.fromList
+        [ ("base_stream_cmp", ["Data.Stream.StreamD", "Data.Stream.StreamK"])
+        , ("serial_wserial_cmp", ["Prelude.Serial", "Prelude.WSerial"])
+        , ("serial_async_cmp", ["Prelude.Serial", "Prelude.Async"])
+        , ( "concurrent_cmp"
+          , [ "Prelude.Async"
+            , "Prelude.WAsync"
+            , "Prelude.Ahead"
+            , "Prelude.Parallel"
+            ])
+        , ( "array_cmp"
+          , [ "Data.Array.Foreign"
+            , "Data.Array.Prim"
+            , "Data.Array"
+            , "Data.Array.Prim.Pinned"
+            ])
+        , ("pinned_array_cmp", ["Data.Array.Foreign", "Data.Array.Prim.Pinned"])
+        , ("base_parser_cmp", ["Data.Parser.ParserD", "Data.Parser.ParserK"])
+        ]
 
 defaultConfig :: Configuration
 defaultConfig =
     Configuration
-        { config_RUNNING_TESTS = False
-        , config_RUNNING_BENCHMARKS = True
-        , config_RUNNING_DEVBUILD = False
-        , config_GROUP_TARGETS = Map.empty
-        , config_COMPARISIONS = Map.empty
-        , config_INDIVIDUAL_TARGETS = []
+        { config_RUNNING_DEVBUILD = False
+        , config_GROUP_TARGETS = groupTargets
+        , config_COMPARISIONS = env_COMPARISIONS
+        , config_INDIVIDUAL_TARGETS = individualTargers
         , config_TARGETS = []
         , config_TEST_QUICK_MODE = False
         , config_GHC_VERSION = ""
@@ -116,7 +215,6 @@ defaultConfig =
         , config_QUICK_MODE = False
         , config_SLOW = False
         , config_USE_GIT_CABAL = True
-        , config_DEFAULT_TARGETS = []
         , config_LONG = False
         , config_BENCH_PREFIX = ""
         , config_GAUGE_ARGS = ""
@@ -125,7 +223,7 @@ defaultConfig =
         , config_COMMIT_COMPARE = False
         , config_BUILD_BENCH = ""
         , config_BENCHMARK_PACKAGE_NAME = "streamly-benchmarks"
-        , config_FIELDS = []
+        , config_FIELDS = ["cputime", "allocated", "maxrss"]
         , config_BENCH_CUTOFF_PERCENT = 0
         , config_BENCH_DIFF_STYLE = PercentDiff
         , config_SORT_BY_NAME = False
@@ -136,13 +234,15 @@ defaultConfig =
         , config_DEFAULT_FIELDS = []
         , config_COMMON_FIELDS = []
         , config_ALL_FIELDS = []
-        , config_TARGETS_ORIG = []
         , config_BUILD_FLAGS = ""
-        , config_SET_TARGETS = []
-        , config_ALL_GRP = []
-        , config_INFINITE_GRP = []
-        , config_COMPARISON_REPORTS = []
+        , config_INFINITE_GRP =
+              [ TGroup "prelude_serial_grp"
+              , TGroup "prelude_concurrent_grp"
+              , TIndividual "Prelude.Rate"
+              ]
         , config_COMPARE = False
+        , config_BENCH_SPEED_OPTIONS = \_ _ -> Nothing
+        , config_BENCH_RTS_OPTIONS = \_ _ -> ""
         }
 
 -- Clean this, use both ReaderT and StateT!
@@ -154,22 +254,6 @@ type Context a = StateT Configuration IO a
 
 hasItem :: Eq a => a -> [a] -> Bool
 hasItem = elem
-
-testOnly :: String -> Context (Maybe String)
-testOnly x = do
-    res <- gets config_RUNNING_TESTS
-    return
-        $ if res
-          then Just x
-          else Nothing
-
-benchOnly :: String -> Context (Maybe String)
-benchOnly x = do
-    res <- gets config_RUNNING_BENCHMARKS
-    return
-        $ if res
-          then Just x
-          else Nothing
 
 devBuild :: String -> Context (Maybe String)
 devBuild x = do
@@ -205,11 +289,11 @@ listTargetGroups = do
 
     pretty k v = k ++ " [" ++ concat (intersperse ", " v) ++ "]"
 
--- XXX pass as arg?
-setTargets :: Context [String]
+setTargets :: Context [Target]
 setTargets = do
     conf <- get
-    let defTargets = config_DEFAULT_TARGETS conf
+    allIndividualTargets <- allGrp
+    let defTargets = map TIndividual allIndividualTargets
         targets = config_TARGETS conf
         grpTargets = config_GROUP_TARGETS conf
         comparisions = config_COMPARISIONS conf
@@ -222,12 +306,16 @@ setTargets = do
     where
 
     flatten _ _ [] = []
-    flatten grpTargets comparisions (t:ts)
-        | "_grp" `isSuffixOf` t =
-            (Map.!) grpTargets t ++ flatten grpTargets comparisions ts
-        | "_cmp" `isSuffixOf` t =
-            (Map.!) comparisions t ++ [t] ++ flatten grpTargets comparisions ts
-        | otherwise = [t] ++ flatten grpTargets comparisions ts
+    flatten grpTargets comparisions (t:ts) =
+        t
+            : case t of
+                  TGroup x ->
+                      map TIndividual ((Map.!) grpTargets x)
+                          ++ flatten grpTargets comparisions ts
+                  TComparisionGroup x ->
+                      map TIndividual ((Map.!) comparisions x)
+                          ++ flatten grpTargets comparisions ts
+                  TIndividual _ -> flatten grpTargets comparisions ts
 
 cabalWhichBuilddir :: String -> String -> String -> String -> Context String
 cabalWhichBuilddir  builddir packageNameWithVersion component cmdToFind = do
@@ -238,13 +326,11 @@ cabalWhichBuilddir  builddir packageNameWithVersion component cmdToFind = do
             then "/noopt"
             else ""
         path = [line|
-$builddir/build/*/ghc-${env_GHC_VERSION}
-/$packageNameWithVersion/$component
-/$cmdToFind$noopt
-/build/$cmdToFind/$cmdToFind
+$builddir/build/*/ghc-${env_GHC_VERSION}/$packageNameWithVersion/$component/$cmdToFind$noopt/build/$cmdToFind/$cmdToFind
 |]
-    liftIO $ run [line| echo "[cabal_which $path]" 1>&2 |]
-    liftIO $ runUtf8' [line| test -f "$path" && echo $path |]
+    truePath <- liftIO $ runUtf8' [line| echo $path |]
+    liftIO $ run [line| echo [cabal_which "$truePath"] 1>&2 |]
+    liftIO $ runUtf8' [line| test -f "$truePath" && echo $truePath |]
 
 cabalWhich :: String -> String -> String -> Context String
 cabalWhich packageNameWithVersion component cmdToFind = do
@@ -274,12 +360,7 @@ setCommonVars = do
         else return "dist-newstyle"
     put
         $ conf
-              { config_SLOW = False
-              , config_QUICK_MODE = False
-              , config_RUNNING_DEVBUILD = False
-              , config_TARGET_EXE_ARGS = ""
-              , config_RTS_OPTIONS = ""
-              , config_CABAL_BUILD_OPTIONS = ""
+              { config_TARGET_EXE_ARGS = ""
               , config_CABAL_EXECUTABLE = cabalExe
               , config_BUILD_DIR = buildDir
               }

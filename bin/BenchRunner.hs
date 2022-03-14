@@ -10,9 +10,9 @@ import Control.Monad (when, unless, void)
 import Control.Monad.IO.Class (MonadIO(..))
 import Utils.QuasiQuoter (line)
 import Control.Monad.Trans.State.Strict (execStateT, gets, modify)
-import Data.List (intersperse)
+import Data.List (intersperse, isSuffixOf)
 import System.Directory (createDirectoryIfMissing)
-import System.FilePath (takeFileName, takeDirectory)
+import System.FilePath (takeFileName, takeDirectory, (</>))
 import Data.Function ((&))
 import BenchShow.Internal.Common (GroupStyle(..))
 
@@ -33,51 +33,73 @@ import Options.Applicative.Simple
 -- CLI
 --------------------------------------------------------------------------------
 
+targetsFromString :: String -> Either String [Target]
+targetsFromString xs = Right $ map stringToTarget $ words xs
+
 cliOptions :: OptParse.Parser Configuration
-cliOptions =
-    Configuration <$> pure False <*> pure True <*> switch (long "dev-build")
-        <*> pure Map.empty
-        <*> pure Map.empty
-        <*> pure []
-        <*> (words <$> strOption (long "targets"))
-        <*> pure False
-        <*> pure ""
-        <*> pure ""
-        <*> strOption (long "cabal-build-options")
-        <*> strOption (long "with-compiler")
-        <*> pure ""
-        <*> strOption (long "rts-opts")
-        <*> pure ""
+cliOptions = do
+    Configuration <$> switch (long "dev-build")
+        <*> pure (config_GROUP_TARGETS defaultConfig)
+        <*> pure (config_COMPARISIONS defaultConfig)
+        <*> pure (config_INDIVIDUAL_TARGETS defaultConfig)
+        <*> (option
+                 (eitherReader targetsFromString)
+                 (long "targets"
+                      <> value (config_TARGETS defaultConfig)))
+        <*> pure (config_TEST_QUICK_MODE defaultConfig)
+        <*> pure (config_GHC_VERSION defaultConfig)
+        <*> pure (config_BUILD_DIR defaultConfig)
+        <*> strOption
+              (long "cabal-build-options"
+                   <> value (config_CABAL_BUILD_OPTIONS defaultConfig))
+        <*> strOption
+              (long "with-compiler"
+                   <> value (config_CABAL_WITH_COMPILER defaultConfig))
+        <*> pure (config_CABAL_EXECUTABLE defaultConfig)
+        <*> strOption
+              (long "rts-opts" <> value (config_RTS_OPTIONS defaultConfig))
+        <*> pure (config_TARGET_EXE_ARGS defaultConfig)
         <*> switch (long "quick")
         <*> switch (long "slow")
-        <*> pure True
-        <*> pure []
+        <*> pure (config_USE_GIT_CABAL defaultConfig)
         <*> switch (long "long")
-        <*> strOption (long "prefix")
-        <*> strOption (long "gauge-args")
-        <*> pure ""
+        <*> strOption
+              (long "prefix" <> value (config_BENCH_PREFIX defaultConfig))
+        <*> strOption
+              (long "gauge-args" <> value (config_GAUGE_ARGS defaultConfig))
+        <*> pure (config_BENCHMARK_PACKAGE_VERSION defaultConfig)
         <*> switch (long "append")
         <*> switch (long "commit-compare")
-        <*> pure ""
-        <*> pure ""
-        <*> (words <$> strOption (long "fields"))
-        <*> (read <$> strOption (long "diff-cutoff-percent"))
-        <*> option (eitherReader diffStyleFromString) (long "diff-style")
+        <*> pure (config_BUILD_BENCH defaultConfig)
+        <*> pure (config_BENCHMARK_PACKAGE_NAME defaultConfig)
+        <*> (words
+                 <$> strOption
+                       (long "fields"
+                            <> value (unwords (config_FIELDS defaultConfig))))
+        <*> (read
+                 <$> strOption
+                       (long "diff-cutoff-percent"
+                            <> value
+                                  (show
+                                       (config_BENCH_CUTOFF_PERCENT
+                                            defaultConfig))))
+        <*> option
+              (eitherReader diffStyleFromString)
+              (long "diff-style"
+                   <> value (config_BENCH_DIFF_STYLE defaultConfig))
         <*> switch (long "sort-by-name")
         <*> switch (long "graphs")
         <*> switch (long "silent")
         <*> switch (long "raw")
         <*> unswitch (long "no-measure")
-        <*> pure []
-        <*> pure []
-        <*> pure []
-        <*> pure []
-        <*> pure ""
-        <*> pure []
-        <*> pure []
-        <*> pure []
-        <*> pure []
+        <*> pure (config_DEFAULT_FIELDS defaultConfig)
+        <*> pure (config_COMMON_FIELDS defaultConfig)
+        <*> pure (config_ALL_FIELDS defaultConfig)
+        <*> pure (config_BUILD_FLAGS defaultConfig)
+        <*> pure (config_INFINITE_GRP defaultConfig)
         <*> switch (long "compare")
+        <*> pure (config_BENCH_SPEED_OPTIONS defaultConfig)
+        <*> pure (config_BENCH_RTS_OPTIONS defaultConfig)
 
     where
 
@@ -106,7 +128,7 @@ _listComparisions = do
     pretty k v = k ++ " [" ++ concat (intersperse ", " v) ++ "]"
 
 benchOutputFile :: String -> String
-benchOutputFile benchName = [line| charts/$benchName/results.csv |]
+benchOutputFile benchName = "charts" </> benchName </> "results.csv"
 
 --------------------------------------------------------------------------------
 -- Speed options
@@ -116,12 +138,10 @@ benchOutputFile benchName = [line| charts/$benchName/results.csv |]
 -- Determine options from benchmark name
 --------------------------------------------------------------------------------
 
-data Quickness
-    = Quicker
-    | SuperQuick
-
 benchExecOne :: String -> String -> String -> Context ()
 benchExecOne benchExecPath benchName otherOptions = do
+    benchSpeedOptions <- gets config_BENCH_SPEED_OPTIONS
+    benchRTSOptions <- gets config_BENCH_RTS_OPTIONS
     let benchBaseName = takeFileName benchExecPath
     -- Using no name conversion
     let superQuickOptions = "--stdev 1000000"
@@ -162,12 +182,13 @@ benchExecOne benchExecPath benchName otherOptions = do
     ----------------------------------------------------------------------------
 
     let outputFile = benchOutputFile benchBaseName
-    liftIO $ createDirectoryIfMissing True outputFile
+        outputDir = takeDirectory outputFile
+    liftIO $ createDirectoryIfMissing True outputDir
     liftIO $ runVerbose [line| rm -f $outputFile.tmp |]
     benchNameEscaped <-
         liftIO
             $ runUtf8'
-                  [line| echo "$benchName" | sed -e 's/\\/\\\\/g' | sed -e 's/"/\\"/g' |]
+                  [line| echo "$benchName" | sed -e 's/\\/\\\\/g' | sed -e 's/"/\\"/g' | sed -e "s/'/'\\\''/g" |]
     liftIO $ runVerbose $ [line|
 $benchExecPath
   -j 1
@@ -176,7 +197,7 @@ $benchExecPath
   $quickBenchOptions
   $otherOptions
   --csv=$outputFile.tmp
-  -p '$benchName == "'"$benchNameEscaped"'"'
+  -p '$$0 == "$benchNameEscaped"'
   || die "Benchmark execution failed."
 |]
 
@@ -190,11 +211,6 @@ tail -n +2 $outputFile.tmp
     | awk 'BEGIN {FPAT = "([^,]+)|(\"[^\"]+\")";OFS=","} {$$2=$$2/1000000000000;print}'
     >> $outputFile
 |]
-
-    where
-
-    benchRTSOptions = undefined
-    benchSpeedOptions = undefined
 
 invokeTastyBench :: String -> String -> String -> Context ()
 invokeTastyBench targetProg targetName outputFile = do
@@ -257,7 +273,7 @@ runMeasurements benchList = do
     commitCompare <- gets config_COMMIT_COMPARE
     buildBench <- gets config_BUILD_BENCH
     benchPackageName <- gets config_BENCHMARK_PACKAGE_NAME
-    targets <- gets config_TARGETS
+    targets <- catIndividuals <$> gets config_TARGETS
     if commitCompare
     then runBenchesComparing benchList
     else do
@@ -283,6 +299,10 @@ runReports benchmarks = do
                         , BenchReport.fields = fields
                         , BenchReport.diffStyle = diffStyle
                         , BenchReport.cutOffPercent = cutOffPercent
+                        , BenchReport.benchType = Just $
+                            if "_cmp" `isSuffixOf` i
+                            then BenchReport.Compare i
+                            else BenchReport.Standard i
                         }
 
 -------------------------------------------------------------------------------
@@ -291,21 +311,15 @@ runReports benchmarks = do
 
 bootstrap :: Context ()
 bootstrap = do
-    modify $ \conf -> conf {config_USE_GIT_CABAL = True}
+    modify $ \conf -> conf {config_USE_GIT_CABAL = False}
     setCommonVars
     -- XXX Temporarily skipping comparision vars
-    modify $ \conf -> conf {config_APPEND = False}
-    modify $ \conf -> conf {config_LONG = False}
-    modify $ \conf -> conf {config_RAW = False}
-    modify $ \conf -> conf {config_SORT_BY_NAME = False}
-    modify $ \conf -> conf {config_GRAPH = False}
-    modify $ \conf -> conf {config_MEASURE = True}
-    modify $ \conf -> conf {config_GAUGE_ARGS = ""}
     modify
         $ \conf ->
               conf
                   { config_CABAL_BUILD_OPTIONS =
-                        "--flag fusion-plugin --flag limit-build-mem"
+                        let cliOpts = config_CABAL_BUILD_OPTIONS conf
+                         in [line| --flag fusion-plugin --flag limit-build-mem $cliOpts |]
                   }
 
 postCLIParsing :: Context ()
@@ -320,12 +334,6 @@ postCLIParsing = do
 -------------------------------------------------------------------------------
 
 -- Skipping help text
-
-onlyRealBenchmarks :: Context [String]
-onlyRealBenchmarks = do
-    targets <- gets config_TARGETS
-    comparisionKeys <- Map.keys <$> gets config_COMPARISIONS
-    return $ filter (\x -> not (x `elem` comparisionKeys)) targets
 
 postTargetDetermination :: Context ()
 postTargetDetermination = do
@@ -342,7 +350,7 @@ flagLongSetup :: Context ()
 flagLongSetup = do
     isLong <- gets config_LONG
     targets <- gets config_TARGETS
-    let targetsStr = unwords targets
+    let targetsStr = unwords $ catIndividuals targets
     when (isLong && not (null targets))
         $ liftIO
         $ die [line| Cannot specify benchmarks [$targetsStr] with --long |]
@@ -351,22 +359,13 @@ flagLongSetup = do
 
 setupTargets :: Context ()
 setupTargets = do
-    allGrp_ <- allGrp
     setTargets_ <- setTargets
-    modify
-        $ \conf ->
-              conf
-                  { config_DEFAULT_TARGETS = allGrp_
-                  , config_TARGETS = setTargets_
-                  }
-    modify $ \conf -> conf {config_TARGETS_ORIG = config_TARGETS conf}
-    realBenchmarks <- onlyRealBenchmarks
-    modify $ \conf -> conf {config_TARGETS = realBenchmarks}
+    modify $ \conf -> conf {config_TARGETS = setTargets_}
 
 postSettingUpTargets :: Context ()
 postSettingUpTargets = do
     silent <- gets config_SILENT
-    targetsStr <- unwords <$> gets config_TARGETS
+    targetsStr <- unwords . catIndividuals <$> gets config_TARGETS
     unless silent
         $ liftIO $ putStrLn [line| "Using benchmark suites [$targetsStr]" |]
 
@@ -387,7 +386,7 @@ buildAndRunTargets = do
                   }
     measure <- gets config_MEASURE
     targets <- gets config_TARGETS
-    when measure $ runMeasurements targets
+    when measure $ runMeasurements (catIndividuals targets)
 
 -------------------------------------------------------------------------------
 -- Run reports
@@ -408,54 +407,32 @@ runFinalReports :: Context ()
 runFinalReports = do
     compare <- gets config_COMPARE
     targets <- gets config_TARGETS
-    let targetsStr = unwords targets
-    dynCmpGrpName <-
-        liftIO
-            $ (++ "_cmp")
-            <$> runUtf8' [line| echo "$targetsStr" | sed -e 's/ /_/g' |]
-    if compare
-    then do
-        modify $ \conf -> conf {config_COMPARISON_REPORTS = targets}
-        buildComparisionReslts dynCmpGrpName targets
-    else modify $ \conf -> conf {config_COMPARISON_REPORTS = []}
     comparisions <- gets config_COMPARISIONS
-    targetsOrig <- gets config_TARGETS_ORIG
-    for_ (Map.keys comparisions)
-        $ \i ->
-              when (i `elem` targetsOrig)
-                  $ do
-                      modify
-                          $ \conf ->
-                                conf
-                                    { config_COMPARISON_REPORTS =
-                                          config_COMPARISON_REPORTS conf ++ [i]
-                                    }
-                      buildComparisionReslts i (comparisions Map.! i)
     raw <- gets config_RAW
-    comparisionReports <- gets config_COMPARISON_REPORTS
-    when (not raw)
+    let targetsStr = unwords $ catIndividuals targets
+        individualTargets = catIndividuals targets
+        comparisionTargets = catComparisions targets
+    when (not raw) $ runReports individualTargets
+    for_ comparisionTargets
+        $ \i -> buildComparisionReslts i (comparisions Map.! i)
+    when (not raw) $ runReports comparisionTargets
+    when compare
         $ do
-            runReports targets
-            runReports comparisionReports
-            when compare
-                $ liftIO $ runVerbose [line| rm -rf "charts/$dynCmpGrpName" |]
+            dynCmpGrpName <-
+                liftIO
+                    $ (++ "_cmp")
+                    <$> runUtf8' [line| echo "$targetsStr" | sed -e 's/ /_/g' |]
+            buildComparisionReslts dynCmpGrpName individualTargets
+            when (not raw) $ runReports [dynCmpGrpName]
+            liftIO $ runVerbose [line| rm -rf "charts/$dynCmpGrpName" |]
 
 --------------------------------------------------------------------------------
 -- Pipeline
 --------------------------------------------------------------------------------
 
-runPipelineWithNewConfig :: Configuration -> Context ()
-runPipelineWithNewConfig conf1 = do
+runPipeline :: Context ()
+runPipeline = do
     bootstrap
-    -- Merging config
-    modify
-        $ \conf ->
-              conf
-                  { config_CABAL_BUILD_OPTIONS =
-                        let prev = config_CABAL_BUILD_OPTIONS conf
-                            new = config_CABAL_BUILD_OPTIONS conf1
-                         in [line| $prev $new |]
-                  }
     postCLIParsing
     flagLongSetup
     postTargetDetermination
@@ -477,4 +454,4 @@ main = do
             "A helper tool for benchmarking"
             cliOptions
             empty
-    void $ execStateT (runPipelineWithNewConfig conf) defaultConfig
+    void $ execStateT runPipeline conf
