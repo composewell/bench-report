@@ -128,81 +128,13 @@ data Configuration =
         , config_BENCH_RTS_OPTIONS :: String -> String -> String
         }
 
-groupTargets :: Map String [String]
-groupTargets =
-    Map.fromList
-        [ ( "base_stream_grp"
-          , [ "Data.Stream.StreamD"
-            , "Data.Stream.StreamK"
-            , "Data.Stream.StreamDK"
-            ])
-        , ("prelude_serial_grp", preudeSerialGrp)
-        , ("prelude_concurrent_grp", preudeConcurrentGrp)
-        , ( "prelude_other_grp"
-          , ["Prelude.Rate", "Prelude.Concurrent", "Prelude.Adaptive"])
-        , ( "array_grp"
-          , [ "Data.Array"
-            , "Data.Array.Foreign"
-            , "Data.Array.Prim"
-            , "Data.SmallArray"
-            , "Data.Array.Prim.Pinned"
-            ])
-        , ("base_parser_grp", ["Data.Parser.ParserD", "Data.Parser.ParserK"])
-        , ("parser_grp", ["Data.Fold", "Data.Parser"])
-        , ("list_grp ", [])
-        , ( "infinite_grp"
-          , preudeSerialGrp ++ preudeConcurrentGrp ++ ["Prelude.Rate"])
-        ]
-
-    where
-
-    preudeSerialGrp = ["Prelude.Serial", "Prelude.WSerial", "Prelude.ZipSerial"]
-    preudeConcurrentGrp =
-        [ "Prelude.Async"
-        , "Prelude.WAsync"
-        , "Prelude.Ahead"
-        , "Prelude.Parallel"
-        , "Prelude.ZipAsync"
-        ]
-
-individualTargers :: [String]
-individualTargers =
-    [ "Data.Unfold"
-    , "Unicode.Stream"
-    , "Unicode.Char"
-    , "Unicode.Utf8"
-    , "FileSystem.Handle"
-    ]
-
-env_COMPARISIONS :: Map String [String]
-env_COMPARISIONS =
-    Map.fromList
-        [ ("base_stream_cmp", ["Data.Stream.StreamD", "Data.Stream.StreamK"])
-        , ("serial_wserial_cmp", ["Prelude.Serial", "Prelude.WSerial"])
-        , ("serial_async_cmp", ["Prelude.Serial", "Prelude.Async"])
-        , ( "concurrent_cmp"
-          , [ "Prelude.Async"
-            , "Prelude.WAsync"
-            , "Prelude.Ahead"
-            , "Prelude.Parallel"
-            ])
-        , ( "array_cmp"
-          , [ "Data.Array.Foreign"
-            , "Data.Array.Prim"
-            , "Data.Array"
-            , "Data.Array.Prim.Pinned"
-            ])
-        , ("pinned_array_cmp", ["Data.Array.Foreign", "Data.Array.Prim.Pinned"])
-        , ("base_parser_cmp", ["Data.Parser.ParserD", "Data.Parser.ParserK"])
-        ]
-
 defaultConfig :: Configuration
 defaultConfig =
     Configuration
         { config_RUNNING_DEVBUILD = False
-        , config_GROUP_TARGETS = groupTargets
-        , config_COMPARISIONS = env_COMPARISIONS
-        , config_INDIVIDUAL_TARGETS = individualTargers
+        , config_GROUP_TARGETS = Map.empty
+        , config_COMPARISIONS = Map.empty
+        , config_INDIVIDUAL_TARGETS = []
         , config_TARGETS = []
         , config_TEST_QUICK_MODE = False
         , config_GHC_VERSION = ""

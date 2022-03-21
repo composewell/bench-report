@@ -1,7 +1,9 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 
-module BenchRunner (main) where
+module BenchRunner
+    ( mainWith
+    ) where
 
 --------------------------------------------------------------------------------
 -- Imports
@@ -17,6 +19,7 @@ import System.Directory (createDirectoryIfMissing)
 import System.FilePath (takeFileName, takeDirectory, (</>))
 import Data.Function ((&))
 import BenchShow.Internal.Common (GroupStyle(..))
+import Data.Map (Map)
 
 import qualified Options.Applicative as OptParse
 import qualified Streamly.Internal.Data.Stream.IsStream as Stream
@@ -447,8 +450,14 @@ runPipeline = do
 -- Main
 --------------------------------------------------------------------------------
 
-main :: IO ()
-main = do
+mainWith ::
+       Map String [String]
+    -> [String]
+    -> Map String [String]
+    -> (String -> String -> Maybe Quickness)
+    -> (String -> String -> String)
+    -> IO ()
+mainWith grpTargets indTargers cmps speedOpts rtsOpts = do
     (conf, ()) <-
         simpleOptions
             "0.0.0"
@@ -456,4 +465,12 @@ main = do
             "A helper tool for benchmarking"
             cliOptions
             empty
-    void $ execStateT runPipeline conf
+    void
+        $ execStateT runPipeline
+        $ conf
+              { config_GROUP_TARGETS = grpTargets
+              , config_INDIVIDUAL_TARGETS = indTargers
+              , config_COMPARISIONS = cmps
+              , config_BENCH_SPEED_OPTIONS = speedOpts
+              , config_BENCH_RTS_OPTIONS = rtsOpts
+              }
