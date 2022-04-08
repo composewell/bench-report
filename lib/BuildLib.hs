@@ -14,6 +14,7 @@ module BuildLib
     , allTargetGroups
     , listTargets
     , listTargetGroups
+    , listComparisions
     , setTargets
     , cabalWhichBuilddir
     , cabalWhich
@@ -54,6 +55,7 @@ data Target
     = TGroup String
     | TIndividual String
     | TComparisionGroup String
+    deriving (Eq)
 
 targetToString :: Target -> String
 targetToString (TIndividual x) = x
@@ -215,6 +217,18 @@ listTargetGroups :: Context ()
 listTargetGroups = do
     grpTargets <- gets config_GROUP_TARGETS
     let xs = Map.foldrWithKey (\k_ v_ b -> b ++ [pretty k_ v_]) [] grpTargets
+    liftIO $ putStrLn "Benchmark groups:"
+    liftIO $ putStr $ unlines xs
+
+    where
+
+    pretty k v = k ++ " [" ++ concat (intersperse ", " v) ++ "]"
+
+listComparisions :: Context ()
+listComparisions = do
+    liftIO $ putStrLn "Comparison groups:"
+    res <- gets config_COMPARISIONS
+    let xs = Map.foldrWithKey (\k_ v_ b -> b ++ [pretty k_ v_]) [] res
     liftIO $ putStr $ unlines xs
 
     where

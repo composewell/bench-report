@@ -121,17 +121,6 @@ cliOptions = do
 -- Reporting utility functions
 --------------------------------------------------------------------------------
 
-_listComparisions :: Context ()
-_listComparisions = do
-    liftIO $ putStrLn "Comparison groups:"
-    res <- gets config_COMPARISIONS
-    let xs = Map.foldrWithKey (\k_ v_ b -> b ++ [pretty k_ v_]) [] res
-    liftIO $ putStr $ unlines xs
-
-    where
-
-    pretty k v = k ++ " [" ++ concat (intersperse ", " v) ++ "]"
-
 benchOutputFile :: String -> String
 benchOutputFile benchName = "charts" </> benchName </> "results.csv"
 
@@ -334,6 +323,23 @@ postCLIParsing = do
     when (null fields) $ modify $ \conf -> conf {config_FIELDS = defFields}
     setDerivedVars
 
+printHelpOnArgs :: Context Bool
+printHelpOnArgs = do
+    targets <- gets config_TARGETS
+    when (hasItem (TIndividual "help") targets) $ do
+        listTargets
+        listTargetGroups
+        listComparisions
+    fields <- gets config_FIELDS
+    allFields <- gets config_ALL_FIELDS
+    defFields <- gets config_DEFAULT_FIELDS
+    when (hasItem "help" fields) $ liftIO $ do
+        putStr "Supported fields: "
+        putStrLn $ unwords allFields
+        putStr "Default fields: "
+        putStrLn $ unwords defFields
+    return $ hasItem "help" fields || hasItem (TIndividual "help") targets
+
 -------------------------------------------------------------------------------
 -- Determine targets
 -------------------------------------------------------------------------------
@@ -439,12 +445,14 @@ runPipeline :: Context ()
 runPipeline = do
     bootstrap
     postCLIParsing
-    flagLongSetup
-    postTargetDetermination
-    setupTargets
-    postSettingUpTargets
-    buildAndRunTargets
-    runFinalReports
+    hasHelp <- printHelpOnArgs
+    unless hasHelp $ do
+         flagLongSetup
+         postTargetDetermination
+         setupTargets
+         postSettingUpTargets
+         buildAndRunTargets
+         runFinalReports
 
 --------------------------------------------------------------------------------
 -- Main
