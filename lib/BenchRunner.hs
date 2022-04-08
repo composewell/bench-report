@@ -98,7 +98,6 @@ cliOptions = do
         <*> switch (long "raw")
         <*> unswitch (long "no-measure")
         <*> pure (config_DEFAULT_FIELDS defaultConfig)
-        <*> pure (config_COMMON_FIELDS defaultConfig)
         <*> pure (config_ALL_FIELDS defaultConfig)
         <*> pure (config_BUILD_FLAGS defaultConfig)
         <*> pure (config_INFINITE_GRP defaultConfig)
@@ -344,19 +343,6 @@ printHelpOnArgs = do
 -- Determine targets
 -------------------------------------------------------------------------------
 
--- Skipping help text
-
-postTargetDetermination :: Context ()
-postTargetDetermination = do
-    modify
-        $ \conf ->
-              conf
-                  { config_COMMON_FIELDS =
-                        ["allocated", "bytescopied", "cputime", "maxrss"]
-                  }
-    -- Not caring about USE_GAUGE
-    modify $ \conf -> conf {config_ALL_FIELDS = config_COMMON_FIELDS conf}
-
 flagLongSetup :: Context ()
 flagLongSetup = do
     isLong <- gets config_LONG
@@ -448,7 +434,6 @@ runPipeline = do
     hasHelp <- printHelpOnArgs
     unless hasHelp $ do
          flagLongSetup
-         postTargetDetermination
          setupTargets
          postSettingUpTargets
          buildAndRunTargets

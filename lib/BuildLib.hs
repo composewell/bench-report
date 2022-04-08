@@ -121,7 +121,6 @@ data Configuration =
         , config_RAW :: Bool
         , config_MEASURE :: Bool
         , config_DEFAULT_FIELDS :: [String]
-        , config_COMMON_FIELDS :: [String]
         , config_ALL_FIELDS :: [String]
         , config_BUILD_FLAGS :: String -- XXX Can be removed
         , config_INFINITE_GRP :: [Target]
@@ -165,9 +164,8 @@ defaultConfig =
         , config_SILENT = False
         , config_RAW = False
         , config_MEASURE = True
-        , config_DEFAULT_FIELDS = []
-        , config_COMMON_FIELDS = []
-        , config_ALL_FIELDS = []
+        , config_DEFAULT_FIELDS = ["cputime", "allocated", "maxrss"]
+        , config_ALL_FIELDS = ["allocated", "cputime", "allocated", "maxrss"]
         , config_BUILD_FLAGS = ""
         , config_INFINITE_GRP =
               [ TGroup "prelude_serial_grp"
