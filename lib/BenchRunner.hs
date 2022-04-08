@@ -189,12 +189,12 @@ benchExecOne benchExecPath benchName otherOptions = do
     let outputFile = benchOutputFile benchBaseName
         outputDir = takeDirectory outputFile
     liftIO $ createDirectoryIfMissing True outputDir
-    liftIO $ runVerbose [line| rm -f $outputFile.tmp |]
+    liftIO $ run [line| rm -f $outputFile.tmp |]
     benchNameEscaped <-
         liftIO
             $ runUtf8'
                   [line| echo "$benchName" | sed -e 's/\\/\\\\/g' | sed -e 's/"/\\"/g' | sed -e "s/'/'\\\''/g" |]
-    liftIO $ runVerbose $ [line|
+    liftIO $ run $ [line|
 $benchExecPath
   -j 1
   $rtsOptions1
@@ -207,11 +207,11 @@ $benchExecPath
 |]
 
     -- Convert cpuTime field from picoseconds to seconds
-    liftIO $ runVerbose $ [line|
+    liftIO $ run $ [line|
 awk --version 2>&1 | grep -q "GNU Awk"
   || die "Need GNU awk. [$(which awk)] is not GNU awk."
 |]
-    liftIO $ runVerbose $ [line|
+    liftIO $ run $ [line|
 tail -n +2 $outputFile.tmp
     | awk 'BEGIN {FPAT = "([^,]+)|(\"[^\"]+\")";OFS=","} {$$2=$$2/1000000000000;print}'
     >> $outputFile
