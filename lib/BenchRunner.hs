@@ -14,7 +14,7 @@ import Control.Monad (when, unless, void)
 import Control.Monad.IO.Class (MonadIO(..))
 import Utils.QuasiQuoter (line)
 import Control.Monad.Trans.State.Strict (execStateT, gets, modify)
-import Data.List (intersperse, isSuffixOf)
+import Data.List (isSuffixOf)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (takeFileName, takeDirectory, (</>))
 import Data.Function ((&))
@@ -49,7 +49,7 @@ cliOptions = do
         <*> pure (config_INDIVIDUAL_TARGETS defaultConfig)
         <*> (option
                  (eitherReader targetsFromString)
-                 (long "targets"
+                 (long "benchmarks"
                       <> value (config_TARGETS defaultConfig)))
         <*> pure (config_TEST_QUICK_MODE defaultConfig)
         <*> pure (config_GHC_VERSION defaultConfig)
