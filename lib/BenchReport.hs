@@ -1,7 +1,13 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module BenchReport where
+module BenchReport
+    ( Options (..)
+    , BenchType (..)
+    , defaultOptions
+    , runBenchReport
+    )
+where
 
 import Control.Exception (catch, ErrorCall(..))
 import Control.Monad (mzero)
@@ -9,7 +15,7 @@ import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.State
 import Data.Char (toLower)
-import Data.List
+import Data.List (isSuffixOf, sortOn)
 import System.Environment (getArgs)
 import Text.Read (readMaybe)
 
