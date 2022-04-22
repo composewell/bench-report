@@ -4,20 +4,11 @@
 module BuildLib
     ( Configuration(..)
     , Context
-    , die
-    , warn
-    , runVerbose
     , hasItem
-    , silently
-    , devBuild
-    , allGrp
-    , allTargetGroups
     , listTargets
     , listTargetGroups
-    , listComparisions
+    , listComparisons
     , setTargets
-    , cabalWhichBuilddir
-    , cabalWhich
     , cabalTargetProg
     , setCommonVars
     , setDerivedVars
@@ -26,8 +17,7 @@ module BuildLib
     , Quickness(..)
     , Target(..)
     , catIndividuals
-    , catComparisions
-    , targetToString
+    , catComparisons
     , stringToTarget
     ) where
 
@@ -35,15 +25,16 @@ module BuildLib
 -- Imports
 --------------------------------------------------------------------------------
 
-import Control.Monad.IO.Class (MonadIO(..))
-import Data.Map (Map)
-import Utils.QuasiQuoter (line)
-import Control.Monad.Trans.State.Strict (StateT, get, gets, put)
-import Data.List (nub, sort, intersperse, isSuffixOf)
 import BenchShow.Internal.Common (GroupStyle(..))
+import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad.Trans.State.Strict (StateT, get, gets, put)
+import Data.List (nub, sort, intercalate, isSuffixOf)
+import Data.Map (Map)
+import Data.Maybe (mapMaybe)
+import Utils.QuasiQuoter (line)
 
-import qualified Streamly.Coreutils.FileTest as Test
 import qualified Data.Map as Map
+import qualified Streamly.Coreutils.FileTest as Test
 
 import Utils
 
@@ -54,33 +45,35 @@ import Utils
 data Target
     = TGroup String
     | TIndividual String
-    | TComparisionGroup String
+    | TComparisonGroup String
     deriving (Eq)
 
 targetToString :: Target -> String
 targetToString (TIndividual x) = x
 targetToString (TGroup x) = x
-targetToString (TComparisionGroup x) = x
+targetToString (TComparisonGroup x) = x
 
 stringToTarget :: String -> Target
 stringToTarget x
-    | "_cmp" `isSuffixOf` x = TComparisionGroup x
+    | "_cmp" `isSuffixOf` x = TComparisonGroup x
     | "_grp" `isSuffixOf` x = TGroup x
     | otherwise = TIndividual x
 
 catIndividuals :: [Target] -> [String]
-catIndividuals [] = []
-catIndividuals (t:ts) =
-    case t of
-        TIndividual x -> x : catIndividuals ts
-        _ -> catIndividuals ts
+catIndividuals = mapMaybe f
 
-catComparisions :: [Target] -> [String]
-catComparisions [] = []
-catComparisions (t:ts) =
-    case t of
-        TComparisionGroup x -> x : catComparisions ts
-        _ -> catComparisions ts
+    where
+
+    f (TIndividual x) = Just x
+    f _ = Nothing
+
+catComparisons :: [Target] -> [String]
+catComparisons = mapMaybe f
+
+    where
+
+    f (TComparisonGroup x) = Just x
+    f _ = Nothing
 
 data Quickness
     = Quicker
@@ -90,7 +83,7 @@ data Configuration =
     Configuration
         { config_RUNNING_DEVBUILD :: Bool
         , config_GROUP_TARGETS :: Map String [String]
-        , config_COMPARISIONS :: Map String [String]
+        , config_COMPARISONS :: Map String [String]
         , config_INDIVIDUAL_TARGETS :: [String]
         , config_TARGETS :: [Target]
         , config_TEST_QUICK_MODE :: Bool -- XXX This can be removed
@@ -134,7 +127,7 @@ defaultConfig =
     Configuration
         { config_RUNNING_DEVBUILD = False
         , config_GROUP_TARGETS = Map.empty
-        , config_COMPARISIONS = Map.empty
+        , config_COMPARISONS = Map.empty
         , config_INDIVIDUAL_TARGETS = []
         , config_TARGETS = []
         , config_TEST_QUICK_MODE = False
@@ -214,24 +207,24 @@ listTargets = do
 listTargetGroups :: Context ()
 listTargetGroups = do
     grpTargets <- gets config_GROUP_TARGETS
-    let xs = Map.foldrWithKey (\k_ v_ b -> b ++ [pretty k_ v_]) [] grpTargets
+    let xs = Map.foldrWithKey (\k v b -> b ++ [pretty k v]) [] grpTargets
     liftIO $ putStrLn "Benchmark groups:"
     liftIO $ putStr $ unlines xs
 
     where
 
-    pretty k v = k ++ " [" ++ concat (intersperse ", " v) ++ "]"
+    pretty k v = k ++ " [" ++ intercalate ", " v ++ "]"
 
-listComparisions :: Context ()
-listComparisions = do
+listComparisons :: Context ()
+listComparisons = do
     liftIO $ putStrLn "Comparison groups:"
-    res <- gets config_COMPARISIONS
+    res <- gets config_COMPARISONS
     let xs = Map.foldrWithKey (\k_ v_ b -> b ++ [pretty k_ v_]) [] res
     liftIO $ putStr $ unlines xs
 
     where
 
-    pretty k v = k ++ " [" ++ concat (intersperse ", " v) ++ "]"
+    pretty k v = k ++ " [" ++ intercalate ", " v ++ "]"
 
 setTargets :: Context [Target]
 setTargets = do
@@ -240,26 +233,27 @@ setTargets = do
     let defTargets = map TIndividual allIndividualTargets
         targets = config_TARGETS conf
         grpTargets = config_GROUP_TARGETS conf
-        comparisions = config_COMPARISIONS conf
+        comparisons = config_COMPARISONS conf
     let newTargets =
             if null targets
             then defTargets
-            else flatten grpTargets comparisions targets
+            else flatten grpTargets comparisons targets
     return newTargets
 
     where
 
+    -- XXX Avoid explicit recursion
     flatten _ _ [] = []
-    flatten grpTargets comparisions (t:ts) =
+    flatten grpTargets comparisons (t:ts) =
         t
             : case t of
                   TGroup x ->
                       map TIndividual ((Map.!) grpTargets x)
-                          ++ flatten grpTargets comparisions ts
-                  TComparisionGroup x ->
-                      map TIndividual ((Map.!) comparisions x)
-                          ++ flatten grpTargets comparisions ts
-                  TIndividual _ -> flatten grpTargets comparisions ts
+                          ++ flatten grpTargets comparisons ts
+                  TComparisonGroup x ->
+                      map TIndividual ((Map.!) comparisons x)
+                          ++ flatten grpTargets comparisons ts
+                  TIndividual _ -> flatten grpTargets comparisons ts
 
 cabalWhichBuilddir :: String -> String -> String -> String -> Context String
 cabalWhichBuilddir  builddir packageNameWithVersion component cmdToFind = do
@@ -269,9 +263,9 @@ cabalWhichBuilddir  builddir packageNameWithVersion component cmdToFind = do
             if env_TEST_QUICK_MODE
             then "/noopt"
             else ""
-        path = [line|
-$builddir/build/*/ghc-${env_GHC_VERSION}/$packageNameWithVersion/$component/$cmdToFind$noopt/build/$cmdToFind/$cmdToFind
-|]
+        ghc = [line| $builddir/build/*/ghc-${env_GHC_VERSION} |]
+        co = [line| $component/$cmdToFind$noopt/build/$cmdToFind/$cmdToFind |]
+        path = [line| $ghc/$packageNameWithVersion/$co |]
     truePath <- liftIO $ runUtf8' [line| echo $path |]
     liftIO $ run [line| echo [cabal_which "$truePath"] 1>&2 |]
     liftIO $ runUtf8' [line| test -f "$truePath" && echo $truePath |]

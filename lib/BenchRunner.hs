@@ -3,29 +3,30 @@
 
 module BenchRunner
     ( mainWith
-    ) where
+    )
+where
 
 --------------------------------------------------------------------------------
 -- Imports
 --------------------------------------------------------------------------------
 
+import BenchShow.Internal.Common (GroupStyle(..))
 import Data.Foldable (for_)
+import Data.Function ((&))
+import Data.List (isSuffixOf)
+import Data.Map (Map)
 import Control.Monad (when, unless, void)
 import Control.Monad.IO.Class (MonadIO(..))
-import Utils.QuasiQuoter (line)
 import Control.Monad.Trans.State.Strict (execStateT, gets, modify)
-import Data.List (isSuffixOf)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (takeFileName, takeDirectory, (</>))
-import Data.Function ((&))
-import BenchShow.Internal.Common (GroupStyle(..))
-import Data.Map (Map)
+import Utils.QuasiQuoter (line)
 
-import qualified Options.Applicative as OptParse
-import qualified Streamly.Internal.Data.Stream.IsStream as Stream
-import qualified Streamly.Coreutils.FileTest as Test
-import qualified Data.Map as Map
 import qualified BenchReport
+import qualified Data.Map as Map
+import qualified Options.Applicative as OptParse
+import qualified Streamly.Coreutils.FileTest as Test
+import qualified Streamly.Internal.Data.Stream.IsStream as Stream
 
 import Utils
 import BuildLib
@@ -45,12 +46,12 @@ cliOptions :: OptParse.Parser Configuration
 cliOptions = do
     Configuration <$> switch (long "dev-build")
         <*> pure (config_GROUP_TARGETS defaultConfig)
-        <*> pure (config_COMPARISIONS defaultConfig)
+        <*> pure (config_COMPARISONS defaultConfig)
         <*> pure (config_INDIVIDUAL_TARGETS defaultConfig)
-        <*> (option
+        <*> option
                  (eitherReader targetsFromString)
                  (long "benchmarks"
-                      <> value (config_TARGETS defaultConfig)))
+                      <> value (config_TARGETS defaultConfig))
         <*> pure (config_TEST_QUICK_MODE defaultConfig)
         <*> pure (config_GHC_VERSION defaultConfig)
         <*> pure (config_BUILD_DIR defaultConfig)
@@ -133,6 +134,10 @@ benchOutputFile benchName = "charts" </> benchName </> "results.csv"
 
 benchExecOne :: String -> String -> String -> Context ()
 benchExecOne benchExecPath benchName otherOptions = do
+    ---------------------------------------------------------------------------
+    -- Determine the options
+    ---------------------------------------------------------------------------
+
     benchSpeedOptions <- gets config_BENCH_SPEED_OPTIONS
     benchRTSOptions <- gets config_BENCH_RTS_OPTIONS
     let benchBaseName = takeFileName benchExecPath
@@ -143,7 +148,7 @@ benchExecOne benchExecPath benchName otherOptions = do
     quickMode <- gets config_QUICK_MODE
     long_ <- gets config_LONG
     globalRTSOptions <- gets config_RTS_OPTIONS
-    let rtsOptions1 = [line| +RTS -T $localRTSOptions $globalRTSOptions -RTS  |]
+    let rtsOptions1 = [line| +RTS -T $localRTSOptions $globalRTSOptions -RTS |]
     let quickBenchOptions =
             if quickMode
             then superQuickOptions
@@ -161,14 +166,18 @@ benchExecOne benchExecPath benchName otherOptions = do
             Just size ->
                 liftIO
                     $ runUtf8'
-                          [line| env LC_ALL=en_US.UTF-8 printf "--stream-size %'.f\n" $size |]
+                          [line| env LC_ALL=en_US.UTF-8 printf
+                                 "--stream-size %'.f\n" $size
+                          |]
             Nothing -> return ""
     let streamSizeOpt =
             case show <$> streamSize of
                 Just size -> [line| --stream-size $size |]
                 Nothing -> ""
     liftIO $ putStrLn
-        [line| $benchName $rtsOptions1 $streamLen $quickBenchOptions $otherOptions |]
+        [line| $benchName $rtsOptions1 $streamLen $quickBenchOptions
+               $otherOptions
+        |]
 
     ----------------------------------------------------------------------------
     -- Run benchmark with options and collect results
@@ -181,29 +190,38 @@ benchExecOne benchExecPath benchName otherOptions = do
     benchNameEscaped <-
         liftIO
             $ runUtf8'
-                  [line| echo "$benchName" | sed -e 's/\\/\\\\/g' | sed -e 's/"/\\"/g' | sed -e "s/'/'\\\''/g" |]
-    liftIO $ run $ [line|
-$benchExecPath
-  -j 1
-  $rtsOptions1
-  $streamSizeOpt
-  $quickBenchOptions
-  $otherOptions
-  --csv=$outputFile.tmp
-  -p '$$0 == "$benchNameEscaped"'
-  || die "Benchmark execution failed."
-|]
+                  [line| echo "$benchName"
+                       | sed -e 's/\\/\\\\/g'
+                       | sed -e 's/"/\\"/g'
+                       | sed -e "s/'/'\\\''/g"
+                  |]
+    liftIO
+        $ run [line|
+                $benchExecPath
+                    -j 1
+                    $rtsOptions1
+                    $streamSizeOpt
+                    $quickBenchOptions
+                    $otherOptions
+                    --csv=$outputFile.tmp
+                    -p '$$0 == "$benchNameEscaped"'
+                || die "Benchmark execution failed."
+              |]
 
+    -- Post-process the output
     -- Convert cpuTime field from picoseconds to seconds
-    liftIO $ run $ [line|
-awk --version 2>&1 | grep -q "GNU Awk"
-  || die "Need GNU awk. [$(which awk)] is not GNU awk."
-|]
-    liftIO $ run $ [line|
-tail -n +2 $outputFile.tmp
-    | awk 'BEGIN {FPAT = "([^,]+)|(\"[^\"]+\")";OFS=","} {$$2=$$2/1000000000000;print}'
-    >> $outputFile
-|]
+    liftIO
+        $ run [line|
+                awk --version 2>&1 | grep -q "GNU Awk"
+                  || die "Need GNU awk. [$(which awk)] is not GNU awk."
+              |]
+    liftIO
+        $ run [line|
+                tail -n +2 $outputFile.tmp
+                    | awk 'BEGIN {FPAT = "([^,]+)|(\"[^\"]+\")";OFS=","}
+                            {$$2=$$2/1000000000000;print}'
+                    >> $outputFile
+              |]
 
 invokeTastyBench :: String -> String -> String -> Context ()
 invokeTastyBench targetProg targetName outputFile = do
@@ -212,18 +230,19 @@ invokeTastyBench targetProg targetName outputFile = do
     gaugeArgs <- gets config_GAUGE_ARGS
     escapedBenchPrefix <-
         liftIO $ runUtf8' [line| echo "$benchPrefix" | sed -e 's/\//\\\//g' |]
-    let match =
-            if long_
-            then [line| -p /$targetName\\/o-1-space/ |]
-            else if null benchPrefix
-                 then ""
-                 else [line| -p /$escapedBenchPrefix/ |]
+    let match
+          | long_ = [line| -p /$targetName\\/o-1-space/ |]
+          | null benchPrefix = ""
+          | otherwise = [line| -p /$escapedBenchPrefix/ |]
     liftIO
         $ runVerbose
-              [line| echo "Name,cpuTime,2*Stdev (ps),Allocated,bytesCopied,maxrss" >> $outputFile |]
+              [line| echo
+                "Name,cpuTime,2*Stdev (ps),Allocated,bytesCopied,maxrss"
+                >> $outputFile
+              |]
     benchmarkNames <-
         liftIO
-            $ runUtf8 [line| $targetProg -l $match | grep "^All"  |]
+            $ runUtf8 [line| $targetProg -l $match | grep "^All" |]
             & Stream.toList
     for_ benchmarkNames $ \name -> benchExecOne targetProg name gaugeArgs
 
@@ -237,7 +256,8 @@ runBenchTarget packageName component targetName = do
             targetName
     case mTargetProg of
         Nothing ->
-            liftIO $ die [line| Cannot find executable for target $targetName |]
+            liftIO
+                $ die [line| Cannot find executable for target $targetName |]
         Just targetProg -> do
             liftIO $ putStrLn "Running executable $targetName ..."
             let outputFile = benchOutputFile targetName
@@ -306,13 +326,15 @@ bootstrap :: Context ()
 bootstrap = do
     modify $ \conf -> conf {config_USE_GIT_CABAL = False}
     setCommonVars
-    -- XXX Temporarily skipping comparision vars
+    -- XXX Temporarily skipping comparison vars
     modify
         $ \conf ->
               conf
                   { config_CABAL_BUILD_OPTIONS =
                         let cliOpts = config_CABAL_BUILD_OPTIONS conf
-                         in [line| --flag fusion-plugin --flag limit-build-mem $cliOpts |]
+                         in [line| --flag fusion-plugin
+                                   --flag limit-build-mem
+                                   $cliOpts |]
                   }
 
 postCLIParsing :: Context ()
@@ -328,7 +350,7 @@ printHelpOnArgs = do
     when (hasItem (TIndividual "help") targets) $ do
         listTargets
         listTargetGroups
-        listComparisions
+        listComparisons
     fields <- gets config_FIELDS
     allFields <- gets config_ALL_FIELDS
     defFields <- gets config_DEFAULT_FIELDS
@@ -379,7 +401,9 @@ buildAndRunTargets = do
         $ \conf ->
               conf
                   { config_BUILD_BENCH =
-                        [line| $cabalExecutable v2-build $buildFlags $cabalBuildOptions --enable-benchmarks |]
+                        [line| $cabalExecutable
+                                    v2-build $buildFlags $cabalBuildOptions
+                                    --enable-benchmarks |]
                   }
     measure <- gets config_MEASURE
     targets <- gets config_TARGETS
@@ -389,8 +413,8 @@ buildAndRunTargets = do
 -- Run reports
 -------------------------------------------------------------------------------
 
-buildComparisionReslts :: String -> [String] -> Context ()
-buildComparisionReslts name constituents = do
+buildComparisonResults :: String -> [String] -> Context ()
+buildComparisonResults name constituents = do
     liftIO $ createDirectoryIfMissing True [line| charts/$name |]
     let destFile = [line| charts/$name/results.csv |]
     liftIO $ runVerbose [line| : > $destFile |]
@@ -404,23 +428,24 @@ runFinalReports :: Context ()
 runFinalReports = do
     compare <- gets config_COMPARE
     targets <- gets config_TARGETS
-    comparisions <- gets config_COMPARISIONS
+    comparisons <- gets config_COMPARISONS
     raw <- gets config_RAW
     let targetsStr = unwords $ catIndividuals targets
         individualTargets = catIndividuals targets
-        comparisionTargets = catComparisions targets
-    when (not raw) $ runReports individualTargets
-    for_ comparisionTargets
-        $ \i -> buildComparisionReslts i (comparisions Map.! i)
-    when (not raw) $ runReports comparisionTargets
+        comparisonTargets = catComparisons targets
+    unless raw $ runReports individualTargets
+    for_ comparisonTargets
+        $ \i -> buildComparisonResults i (comparisons Map.! i)
+    unless raw $ runReports comparisonTargets
     when compare
         $ do
             dynCmpGrpName <-
                 liftIO
                     $ (++ "_cmp")
-                    <$> runUtf8' [line| echo "$targetsStr" | sed -e 's/ /_/g' |]
-            buildComparisionReslts dynCmpGrpName individualTargets
-            when (not raw) $ runReports [dynCmpGrpName]
+                    <$> runUtf8'
+                            [line| echo "$targetsStr" | sed -e 's/ /_/g' |]
+            buildComparisonResults dynCmpGrpName individualTargets
+            unless raw $ runReports [dynCmpGrpName]
             liftIO $ runVerbose [line| rm -rf "charts/$dynCmpGrpName" |]
 
 --------------------------------------------------------------------------------
@@ -450,6 +475,8 @@ mainWith ::
     -> (String -> String -> Maybe Quickness)
     -> (String -> String -> String)
     -> IO ()
+
+-- XXX Use a defaultConfig record instead
 mainWith grpTargets indTargers cmps speedOpts rtsOpts = do
     (conf, ()) <-
         simpleOptions
@@ -463,7 +490,7 @@ mainWith grpTargets indTargers cmps speedOpts rtsOpts = do
         $ conf
               { config_GROUP_TARGETS = grpTargets
               , config_INDIVIDUAL_TARGETS = indTargers
-              , config_COMPARISIONS = cmps
+              , config_COMPARISONS = cmps
               , config_BENCH_SPEED_OPTIONS = speedOpts
               , config_BENCH_RTS_OPTIONS = rtsOpts
               }
