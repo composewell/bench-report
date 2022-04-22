@@ -20,11 +20,11 @@ let haskellPackages =
                     then orig.overrideAttrs (oldAttrs: { src = null; })
                     else orig;
 
-  mkPkgGit = super: gitSrc: ref: name:
+  mkPkgGit = super: gitSrc: rev: name:
     let
       src = builtins.fetchGit {
         url = gitSrc;
-        ref = ref;
+        rev = rev;
       };
     in super.callCabal2nix name src { };
 
@@ -35,12 +35,12 @@ let haskellPackages =
                 {
           streamly-coreutils = let
             src = "git@github.com:composewell/streamly-coreutils.git";
-            ref = "a12756efe24bbf303f2f6d66a95426c7657d297b";
-          in mkPkgGit super src ref "streamly-coreutils";
+            rev = "a12756efe24bbf303f2f6d66a95426c7657d297b";
+          in mkPkgGit super src rev "streamly-coreutils";
           streamly-shell = let
             src = "https://github.com/composewell/streamly-shell.git";
-            ref = "7d77ddc0c06aec21fbbfd1b920ec4f58da654a1b";
-          in mkPkgGit super src ref "streamly-shell";
+            rev = "7d77ddc0c06aec21fbbfd1b920ec4f58da654a1b";
+          in mkPkgGit super src rev "streamly-shell";
           streamly-process = nixpkgs.haskell.lib.dontCheck
             (super.callHackageDirect {
               pkg = "streamly-process";
