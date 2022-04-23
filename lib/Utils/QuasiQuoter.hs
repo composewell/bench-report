@@ -14,6 +14,7 @@
 module Utils.QuasiQuoter
     ( line
     , multi
+    , cmdline
     ) where
 
 --------------------------------------------------------------------------------
@@ -25,6 +26,8 @@ import Control.Monad (void)
 import Control.Monad.Catch (MonadCatch)
 import Data.Char (isAlphaNum)
 import Streamly.Internal.Data.Parser (Parser)
+import Streamly.Coreutils.ShellWords (shellWords)
+import System.IO.Unsafe (unsafePerformIO)
 
 import Language.Haskell.TH
 import Language.Haskell.TH.Quote
@@ -102,6 +105,12 @@ contentExp (LineContentIdentifier name) = do
 lineExp :: Line -> Q Exp
 lineExp xs = appE [| concat |] $ listE $ map contentExp xs
 
+shellExp :: Q Exp -> Q Exp
+shellExp e = do
+    appE [| unwords |]
+        $ appE [| unsafePerformIO . Stream.parse shellWords |]
+        $ appE [| Stream.fromList |] e
+
 smartStringE :: String -> Q Exp
 smartStringE ln =
     case Stream.parse lineParser (Stream.fromList ln) of
@@ -165,6 +174,8 @@ line =
 -- Multi line string
 --------------------------------------------------------------------------------
 
+-- XXX Rename to "para"?
+
 -- | Like 'line' but treats the input as a multiline string any newline
 -- characters in the input are retained as is.
 multi :: QuasiQuoter
@@ -179,3 +190,20 @@ multi =
     where
 
     notSupported = error "multi: Not supported."
+
+--------------------------------------------------------------------------------
+-- Shell command
+--------------------------------------------------------------------------------
+
+cmdline :: QuasiQuoter
+cmdline =
+    QuasiQuoter
+        { quoteExp = shellExp . smartStringE . replace '\n' ' ' . stripAndPad
+        , quotePat = notSupported
+        , quoteType = notSupported
+        , quoteDec = notSupported
+        }
+
+    where
+
+    notSupported = error "line: Not supported."
