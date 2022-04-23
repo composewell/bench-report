@@ -20,7 +20,7 @@ import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.State.Strict (execStateT, gets, modify)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (takeFileName, takeDirectory, (</>))
-import Utils.QuasiQuoter (line)
+import Utils.QuasiQuoter (line, cmdline)
 
 import qualified BenchReport
 import qualified Data.Map as Map
@@ -236,7 +236,7 @@ invokeTastyBench targetProg targetName outputFile = do
           | otherwise = [line| -p /$escapedBenchPrefix/ |]
     liftIO
         $ runVerbose
-              [line| echo
+              [cmdline| echo
                 "Name,cpuTime,2*Stdev (ps),Allocated,bytesCopied,maxrss"
                 >> $outputFile
               |]
@@ -259,7 +259,7 @@ runBenchTarget packageName component targetName = do
             liftIO
                 $ die [line| Cannot find executable for target $targetName |]
         Just targetProg -> do
-            liftIO $ putStrLn "Running executable $targetName ..."
+            liftIO $ putStrLn [line| "Running executable $targetName ..." |]
             let outputFile = benchOutputFile targetName
                 outputDir = takeDirectory outputFile
             liftIO $ createDirectoryIfMissing True outputDir
@@ -332,9 +332,10 @@ bootstrap = do
               conf
                   { config_CABAL_BUILD_OPTIONS =
                         let cliOpts = config_CABAL_BUILD_OPTIONS conf
-                         in [line| --flag fusion-plugin
-                                   --flag limit-build-mem
-                                   $cliOpts |]
+                         in [cmdline| --flag fusion-plugin
+                                      --flag limit-build-mem
+                                      $cliOpts
+                            |]
                   }
 
 postCLIParsing :: Context ()
@@ -401,9 +402,11 @@ buildAndRunTargets = do
         $ \conf ->
               conf
                   { config_BUILD_BENCH =
-                        [line| $cabalExecutable
-                                    v2-build $buildFlags $cabalBuildOptions
-                                    --enable-benchmarks |]
+                        [cmdline|
+                            $cabalExecutable
+                                v2-build $buildFlags $cabalBuildOptions
+                                --enable-benchmarks
+                        |]
                   }
     measure <- gets config_MEASURE
     targets <- gets config_TARGETS
@@ -417,12 +420,12 @@ buildComparisonResults :: String -> [String] -> Context ()
 buildComparisonResults name constituents = do
     liftIO $ createDirectoryIfMissing True [line| charts/$name |]
     let destFile = [line| charts/$name/results.csv |]
-    liftIO $ runVerbose [line| : > $destFile |]
+    liftIO $ runVerbose [cmdline| : > $destFile |]
     for_ constituents
         $ \j ->
               liftIO
                   $ runVerbose
-                        [line| cat "charts/$j/results.csv" >> $destFile |]
+                        [cmdline| cat "charts/$j/results.csv" >> $destFile |]
 
 runFinalReports :: Context ()
 runFinalReports = do
@@ -446,7 +449,7 @@ runFinalReports = do
                             [line| echo "$targetsStr" | sed -e 's/ /_/g' |]
             buildComparisonResults dynCmpGrpName individualTargets
             unless raw $ runReports [dynCmpGrpName]
-            liftIO $ runVerbose [line| rm -rf "charts/$dynCmpGrpName" |]
+            liftIO $ runVerbose [cmdline| rm -rf "charts/$dynCmpGrpName" |]
 
 --------------------------------------------------------------------------------
 -- Pipeline
