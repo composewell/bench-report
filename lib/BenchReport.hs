@@ -1,5 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE CPP #-}
 
 module BenchReport
     ( Options (..)
@@ -17,9 +18,13 @@ import Control.Monad.Trans.State
 import Data.Char (toLower)
 import Data.List (isSuffixOf, sortOn)
 import System.Environment (getArgs)
+#ifdef NO_CHARTS
+import System.IO (hPutStrLn, stderr)
+#endif
 import Text.Read (readMaybe)
 
-import BenchShow
+import BenchShow.Internal.Common
+import BenchShow.Internal.Report
 
 ------------------------------------------------------------------------------
 -- Command line parsing
@@ -171,7 +176,11 @@ ignoringErr a = catch a (\(ErrorCall err :: ErrorCall) ->
 
 makeGraphs :: String -> Config -> String -> IO ()
 makeGraphs name cfg inputFile =
+#ifdef NO_CHARTS
+    hPutStrLn stderr "Please compile without no-charts flag"
+#else
     ignoringErr $ graph inputFile name cfg
+#endif
 
 ------------------------------------------------------------------------------
 -- Arrays
@@ -181,10 +190,15 @@ showComparisons :: Options -> Config -> FilePath -> FilePath -> IO ()
 showComparisons Options{..} cfg inp out =
     let cfg1 = cfg { classifyBenchmark = classifyComparison }
      in if genGraphs
-        then ignoringErr $ graph inp "comparison"
+        then
+#ifdef NO_CHARTS
+            hPutStrLn stderr "Please compile without no-charts flag"
+#else
+            ignoringErr $ graph inp "comparison"
                 cfg1 { outputDir = Just out
                      , presentation = Groups Absolute
                      }
+#endif
         else ignoringErr $ report inp Nothing cfg1
 
     where

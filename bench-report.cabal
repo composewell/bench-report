@@ -7,6 +7,11 @@ description: Benchmark reporting application is not included in the overall
   Benchmark reporting has a lot of dependencies that usually lag behind
   when new GHC releases arrive.
 
+flag no-charts
+  description: Don't generate svg charts
+  manual: True
+  default: False
+
 common compile-options
     ghc-options:        -Weverything
                         -Wno-implicit-prelude
@@ -25,6 +30,8 @@ common compile-options
 
 library
     import:           compile-options
+    if flag(no-charts)
+      cpp-options: -DNO_CHARTS
     exposed-modules:  Utils
                     , Utils.QuasiQuoter
                     , BenchRunner
