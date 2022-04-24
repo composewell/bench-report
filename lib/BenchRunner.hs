@@ -44,7 +44,7 @@ targetsFromString xs = Right $ map stringToTarget $ words xs
 
 cliOptions :: OptParse.Parser Configuration
 cliOptions = do
-    Configuration <$> switch (long "dev-build")
+    Configuration <$> pure False -- switch (long "dev-build")
         <*> pure (config_GROUP_TARGETS defaultConfig)
         <*> pure (config_COMPARISONS defaultConfig)
         <*> pure (config_INDIVIDUAL_TARGETS defaultConfig)
