@@ -324,7 +324,6 @@ runReports benchmarks = do
 
 bootstrap :: Context ()
 bootstrap = do
-    modify $ \conf -> conf {config_USE_GIT_CABAL = False}
     setCommonVars
     -- XXX Temporarily skipping comparison vars
     modify

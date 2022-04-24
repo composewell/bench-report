@@ -31,6 +31,7 @@ import Control.Monad.Trans.State.Strict (StateT, get, gets, put)
 import Data.List (nub, sort, intercalate, isSuffixOf)
 import Data.Map (Map)
 import Data.Maybe (mapMaybe)
+import Streamly.Coreutils.Which (which)
 import Utils.QuasiQuoter (line)
 
 import qualified Data.Map as Map
@@ -288,10 +289,18 @@ setCommonVars :: Context ()
 setCommonVars = do
     conf <- get
     let useGitCabal = config_USE_GIT_CABAL conf
-        cabalExe =
+    cabalExe <-
             if useGitCabal
-            then "git-cabal"
-            else "cabal"
+            then do
+                r <- liftIO $ which "git-cabal"
+                case r of
+                    Just _ -> do
+                        liftIO
+                            $ putStrLn
+                                "Using git-cabal for branch specific builds"
+                        return "git-cabal"
+                    Nothing -> return "cabal"
+            else return "cabal"
     buildDir <-
         if useGitCabal
         then liftIO $ runUtf8' "git-cabal show-builddir"
