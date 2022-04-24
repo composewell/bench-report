@@ -47,20 +47,25 @@ die x = Exit.die [line| Error: $x |]
 warn :: String -> IO ()
 warn x = Exit.die [line| Warning: $x |]
 
+-- XXX toStdout
 run :: String -> IO ()
 run cmd = Sh.srcWith Process.toChunks cmd & Stdio.putChunks
 
 runVerbose :: String -> IO ()
 runVerbose cmd = putStrLn cmd >> run cmd
 
+-- XXX rename: toLines
 runUtf8 :: String -> Stream.SerialT IO String
 runUtf8 cmd =
     Sh.srcWith Process.toChunks cmd & Unicode.decodeUtf8Arrays
         & Stream.splitOnSuffix (== '\n') Fold.toList
 
+-- XXX rename: toLastLine
 runUtf8' :: String -> IO String
 runUtf8' cmd = fmap fromJust (runUtf8 cmd & Stream.last)
 
+-- XXX toBool
+--
 -- Run the command and return the exit status as a Bool. Note that this does not
 -- throw any error or stop the execution. This is like a failable runner.
 run_ :: String -> IO Bool
@@ -70,8 +75,9 @@ run_ cmd =
               (run cmd >> return True)
               (\(_ :: ProcessFailure) -> return False)
 
+-- XXX run_/toNull
 silently :: String -> IO ()
-silently cmd = run [line| $cmd &> /dev/null |]
+silently cmd = Sh.srcWith Process.toChunks cmd & Stream.drain
 
 --------------------------------------------------------------------------------
 -- Helpers
