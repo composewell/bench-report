@@ -8,6 +8,7 @@ module Utils
     , runUtf8
     , runUtf8'
     , run_
+    , onError
     , silently
     , env_SCRIPT_DIR
     ) where
@@ -74,6 +75,12 @@ run_ cmd =
         >> catch
               (run cmd >> return True)
               (\(_ :: ProcessFailure) -> return False)
+
+onError :: String -> IO () -> IO ()
+onError cmd action =
+    catch
+      (run cmd)
+      (\(_ :: ProcessFailure) -> action)
 
 -- XXX run_/toNull
 silently :: String -> IO ()

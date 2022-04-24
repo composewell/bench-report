@@ -175,8 +175,8 @@ benchExecOne benchExecPath benchName otherOptions = do
                 Just size -> [line| --stream-size $size |]
                 Nothing -> ""
     liftIO $ putStrLn
-        [line| $benchName $rtsOptions1 $streamLen $quickBenchOptions
-               $otherOptions
+        [cmdline| $benchName $rtsOptions1 $streamLen $quickBenchOptions
+                  $otherOptions
         |]
 
     ----------------------------------------------------------------------------
@@ -196,7 +196,7 @@ benchExecOne benchExecPath benchName otherOptions = do
                        | sed -e "s/'/'\\\''/g"
                   |]
     liftIO
-        $ run [line|
+        $ [line|
                 $benchExecPath
                     -j 1
                     $rtsOptions1
@@ -205,16 +205,13 @@ benchExecOne benchExecPath benchName otherOptions = do
                     $otherOptions
                     --csv=$outputFile.tmp
                     -p '$$0 == "$benchNameEscaped"'
-                || die "Benchmark execution failed."
-              |]
+          |] `onError` die "Benchmark execution failed."
 
     -- Post-process the output
     -- Convert cpuTime field from picoseconds to seconds
     liftIO
-        $ run [line|
-                awk --version 2>&1 | grep -q "GNU Awk"
-                  || die "Need GNU awk. [$(which awk)] is not GNU awk."
-              |]
+        $ [line| awk --version 2>&1 | grep -q "GNU Awk"
+          |] `onError` die "Need GNU awk. [$(which awk)] is not GNU awk."
     liftIO
         $ run [line|
                 tail -n +2 $outputFile.tmp
