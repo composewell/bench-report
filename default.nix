@@ -72,7 +72,7 @@ let haskellPackages =
             src = "https://github.com/composewell/streamly-process.git";
             rev = "a56ef61c1208c2d564a526eba315d903c0b4af2c";
           in nixpkgs.haskell.lib.dontCheck
-            (mkPkgGitRef super src rev "streamly-latest" "streamly-process");
+            (mkPkgGit super src rev "streamly-process");
 
           #streamly-process = nixpkgs.haskell.lib.dontCheck
           #  (super.callHackageDirect {
