@@ -231,18 +231,20 @@ invokeTastyBench targetProg targetName outputFile = do
     escapedBenchPrefix <-
         liftIO $ runUtf8' [line| echo "$benchPrefix" | sed -e 's/\//\\\//g' |]
     let match
-          | long_ = [line| -p /$targetName\\/o-1-space/ |]
+          | long_ = [line| -p "/$targetName\\/o-1-space/" |]
           | null benchPrefix = ""
-          | otherwise = [line| -p /$escapedBenchPrefix/ |]
+          | otherwise = [line| -p "/$escapedBenchPrefix/" |]
     liftIO
         $ runVerbose
               [cmdline| echo
                 "Name,cpuTime,2*Stdev (ps),Allocated,bytesCopied,maxrss"
                 >> $outputFile
               |]
+    let cmd = [line| $targetProg -l $match | grep "^All" |]
+    -- liftIO $ putStrLn cmd
     benchmarkNames <-
         liftIO
-            $ runUtf8 [line| $targetProg -l $match | grep "^All" |]
+            $ runUtf8 cmd
             & Stream.toList
     for_ benchmarkNames $ \name -> benchExecOne targetProg name gaugeArgs
 
