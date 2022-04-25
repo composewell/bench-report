@@ -1,8 +1,9 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module BenchRunner
-    ( mainWith
+    ( -- mainWith
     )
 where
 
@@ -11,13 +12,13 @@ where
 --------------------------------------------------------------------------------
 
 import BenchShow.Internal.Common (GroupStyle(..))
+import Control.Monad (when, unless, void)
+import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad.Trans.State.Strict (StateT, execStateT, get, gets, modify)
 import Data.Foldable (for_)
 import Data.Function ((&))
 import Data.List (isSuffixOf)
 import Data.Map (Map)
-import Control.Monad (when, unless, void)
-import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad.Trans.State.Strict (execStateT, gets, modify)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (takeFileName, takeDirectory, (</>))
 import Utils.QuasiQuoter (line, cmdline)
@@ -35,6 +36,106 @@ import Prelude hiding (compare)
 import Options.Applicative hiding (Parser)
 import Options.Applicative.Simple
 
+data Configuration =
+    Configuration
+        { bconfig_RUNNING_DEVBUILD :: Bool
+        , bconfig_GROUP_TARGETS :: Map String [String]
+        , bconfig_COMPARISONS :: Map String [String]
+        , bconfig_INDIVIDUAL_TARGETS :: [String]
+        , bconfig_TARGETS :: [Target]
+        , bconfig_TEST_QUICK_MODE :: Bool -- XXX This can be removed
+        , bconfig_GHC_VERSION :: String
+        , bconfig_BUILD_DIR :: String
+        , bconfig_CABAL_BUILD_OPTIONS :: String
+        , bconfig_CABAL_WITH_COMPILER :: String
+        , bconfig_CABAL_EXECUTABLE :: String
+        , bconfig_RTS_OPTIONS :: String
+        , bconfig_TARGET_EXE_ARGS :: String -- XXX Can be removed, used in tests
+        , bconfig_QUICK_MODE :: Bool
+        , bconfig_SLOW :: Bool
+        , bconfig_LONG :: Bool
+        , bconfig_BENCH_PREFIX :: String
+        , bconfig_GAUGE_ARGS :: String
+        , bconfig_BENCHMARK_PACKAGE_VERSION :: String
+        , bconfig_APPEND :: Bool
+        , bconfig_COMMIT_COMPARE :: Bool
+        , bconfig_BENCHMARK_PACKAGE_NAME :: String
+        , bconfig_FIELDS :: [String]
+        , bconfig_BENCH_CUTOFF_PERCENT :: Double
+        , bconfig_BENCH_DIFF_STYLE :: GroupStyle
+        , bconfig_SORT_BY_NAME :: Bool
+        , bconfig_GRAPH :: Bool
+        , bconfig_SILENT :: Bool
+        , bconfig_RAW :: Bool
+        , bconfig_MEASURE :: Bool
+        , bconfig_ALL_FIELDS :: [String]
+        , bconfig_INFINITE_GRP :: [Target]
+        , bconfig_COMPARE :: Bool
+        , bconfig_BENCH_SPEED_OPTIONS :: String -> String -> Maybe Quickness
+        , bconfig_BENCH_RTS_OPTIONS :: String -> String -> String
+        }
+
+instance HasConfig Configuration where
+    config_GROUP_TARGETS = bconfig_GROUP_TARGETS
+    config_COMPARISONS = bconfig_COMPARISONS
+    config_INDIVIDUAL_TARGETS = bconfig_INDIVIDUAL_TARGETS
+    config_TARGETS = bconfig_TARGETS
+    config_GHC_VERSION = bconfig_GHC_VERSION
+    config_BUILD_DIR = bconfig_BUILD_DIR
+    config_CABAL_BUILD_OPTIONS = bconfig_CABAL_BUILD_OPTIONS
+    config_CABAL_WITH_COMPILER = bconfig_CABAL_WITH_COMPILER
+    config_TEST_QUICK_MODE = bconfig_TEST_QUICK_MODE
+
+defaultConfig :: Configuration
+defaultConfig =
+    Configuration
+        { bconfig_RUNNING_DEVBUILD = False
+        , bconfig_GROUP_TARGETS = Map.empty
+        , bconfig_COMPARISONS = Map.empty
+        , bconfig_INDIVIDUAL_TARGETS = []
+        , bconfig_TARGETS = []
+        , bconfig_CABAL_EXECUTABLE = "cabal"
+        , bconfig_CABAL_WITH_COMPILER = "ghc"
+        , bconfig_GHC_VERSION = ""
+        , bconfig_CABAL_BUILD_OPTIONS = ""
+        , bconfig_BUILD_DIR = "dist-newstyle"
+        , bconfig_RTS_OPTIONS = ""
+
+        -- Test specific
+        , bconfig_TEST_QUICK_MODE = False
+        , bconfig_TARGET_EXE_ARGS = ""
+
+        -- Benchmark specific
+        , bconfig_QUICK_MODE = False
+        , bconfig_SLOW = False
+        , bconfig_LONG = False
+        , bconfig_BENCH_PREFIX = ""
+        , bconfig_GAUGE_ARGS = ""
+        , bconfig_BENCHMARK_PACKAGE_VERSION = "0.0.0"
+        , bconfig_APPEND = False
+        , bconfig_COMMIT_COMPARE = False
+        , bconfig_BENCHMARK_PACKAGE_NAME = "streamly-benchmarks"
+        , bconfig_FIELDS = ["cputime", "allocated", "maxrss"]
+        , bconfig_BENCH_CUTOFF_PERCENT = 0
+        , bconfig_BENCH_DIFF_STYLE = PercentDiff
+        , bconfig_SORT_BY_NAME = False
+        , bconfig_GRAPH = False
+        , bconfig_SILENT = False
+        , bconfig_RAW = False
+        , bconfig_MEASURE = True
+        , bconfig_ALL_FIELDS = ["allocated", "cputime", "allocated", "maxrss"]
+        , bconfig_INFINITE_GRP =
+              [ TGroup "prelude_serial_grp"
+              , TGroup "prelude_concurrent_grp"
+              , TIndividual "Prelude.Rate"
+              ]
+        , bconfig_COMPARE = False
+        , bconfig_BENCH_SPEED_OPTIONS = \_ _ -> Nothing
+        , bconfig_BENCH_RTS_OPTIONS = \_ _ -> ""
+        }
+
+type Context a = StateT Configuration IO a
+
 --------------------------------------------------------------------------------
 -- CLI
 --------------------------------------------------------------------------------
@@ -45,66 +146,62 @@ targetsFromString xs = Right $ map stringToTarget $ words xs
 cliOptions :: OptParse.Parser Configuration
 cliOptions = do
     Configuration <$> pure False -- switch (long "dev-build")
-        <*> pure (config_GROUP_TARGETS defaultConfig)
-        <*> pure (config_COMPARISONS defaultConfig)
-        <*> pure (config_INDIVIDUAL_TARGETS defaultConfig)
+        <*> pure (bconfig_GROUP_TARGETS defaultConfig)
+        <*> pure (bconfig_COMPARISONS defaultConfig)
+        <*> pure (bconfig_INDIVIDUAL_TARGETS defaultConfig)
         <*> option
                  (eitherReader targetsFromString)
                  (long "benchmarks"
-                      <> value (config_TARGETS defaultConfig))
-        <*> pure (config_TEST_QUICK_MODE defaultConfig)
-        <*> pure (config_GHC_VERSION defaultConfig)
-        <*> pure (config_BUILD_DIR defaultConfig)
+                      <> value (bconfig_TARGETS defaultConfig))
+        <*> pure (bconfig_TEST_QUICK_MODE defaultConfig)
+        <*> pure (bconfig_GHC_VERSION defaultConfig)
+        <*> pure (bconfig_BUILD_DIR defaultConfig)
         <*> strOption
               (long "cabal-build-options"
-                   <> value (config_CABAL_BUILD_OPTIONS defaultConfig))
+                   <> value (bconfig_CABAL_BUILD_OPTIONS defaultConfig))
         <*> strOption
               (long "with-compiler"
-                   <> value (config_CABAL_WITH_COMPILER defaultConfig))
-        <*> pure (config_CABAL_EXECUTABLE defaultConfig)
+                   <> value (bconfig_CABAL_WITH_COMPILER defaultConfig))
+        <*> pure (bconfig_CABAL_EXECUTABLE defaultConfig)
         <*> strOption
-              (long "rts-opts" <> value (config_RTS_OPTIONS defaultConfig))
-        <*> pure (config_TARGET_EXE_ARGS defaultConfig)
+              (long "rts-opts" <> value (bconfig_RTS_OPTIONS defaultConfig))
+        <*> pure (bconfig_TARGET_EXE_ARGS defaultConfig)
         <*> switch (long "quick")
         <*> switch (long "slow")
-        <*> pure (config_USE_GIT_CABAL defaultConfig)
         <*> switch (long "long")
         <*> strOption
-              (long "prefix" <> value (config_BENCH_PREFIX defaultConfig))
+              (long "prefix" <> value (bconfig_BENCH_PREFIX defaultConfig))
         <*> strOption
-              (long "gauge-args" <> value (config_GAUGE_ARGS defaultConfig))
-        <*> pure (config_BENCHMARK_PACKAGE_VERSION defaultConfig)
+              (long "gauge-args" <> value (bconfig_GAUGE_ARGS defaultConfig))
+        <*> pure (bconfig_BENCHMARK_PACKAGE_VERSION defaultConfig)
         <*> switch (long "append")
         <*> switch (long "commit-compare")
-        <*> pure (config_BUILD_BENCH defaultConfig)
-        <*> pure (config_BENCHMARK_PACKAGE_NAME defaultConfig)
+        <*> pure (bconfig_BENCHMARK_PACKAGE_NAME defaultConfig)
         <*> (words
                  <$> strOption
                        (long "fields"
-                            <> value (unwords (config_FIELDS defaultConfig))))
+                            <> value (unwords (bconfig_FIELDS defaultConfig))))
         <*> (read
                  <$> strOption
                        (long "diff-cutoff-percent"
                             <> value
                                   (show
-                                       (config_BENCH_CUTOFF_PERCENT
+                                       (bconfig_BENCH_CUTOFF_PERCENT
                                             defaultConfig))))
         <*> option
               (eitherReader diffStyleFromString)
               (long "diff-style"
-                   <> value (config_BENCH_DIFF_STYLE defaultConfig))
+                   <> value (bconfig_BENCH_DIFF_STYLE defaultConfig))
         <*> switch (long "sort-by-name")
         <*> switch (long "graphs")
         <*> switch (long "silent")
         <*> switch (long "raw")
         <*> unswitch (long "no-measure")
-        <*> pure (config_DEFAULT_FIELDS defaultConfig)
-        <*> pure (config_ALL_FIELDS defaultConfig)
-        <*> pure (config_BUILD_FLAGS defaultConfig)
-        <*> pure (config_INFINITE_GRP defaultConfig)
+        <*> pure (bconfig_ALL_FIELDS defaultConfig)
+        <*> pure (bconfig_INFINITE_GRP defaultConfig)
         <*> switch (long "compare")
-        <*> pure (config_BENCH_SPEED_OPTIONS defaultConfig)
-        <*> pure (config_BENCH_RTS_OPTIONS defaultConfig)
+        <*> pure (bconfig_BENCH_SPEED_OPTIONS defaultConfig)
+        <*> pure (bconfig_BENCH_RTS_OPTIONS defaultConfig)
 
     where
 
@@ -138,16 +235,16 @@ benchExecOne benchExecPath benchName otherOptions = do
     -- Determine the options
     ---------------------------------------------------------------------------
 
-    benchSpeedOptions <- gets config_BENCH_SPEED_OPTIONS
-    benchRTSOptions <- gets config_BENCH_RTS_OPTIONS
+    benchSpeedOptions <- gets bconfig_BENCH_SPEED_OPTIONS
+    benchRTSOptions <- gets bconfig_BENCH_RTS_OPTIONS
     let benchBaseName = takeFileName benchExecPath
     -- Using no name conversion
     let superQuickOptions = "--stdev 1000000"
         quickerOptions = "--stdev 100"
         localRTSOptions = benchRTSOptions benchBaseName benchName
-    quickMode <- gets config_QUICK_MODE
-    long_ <- gets config_LONG
-    globalRTSOptions <- gets config_RTS_OPTIONS
+    quickMode <- gets bconfig_QUICK_MODE
+    long_ <- gets bconfig_LONG
+    globalRTSOptions <- gets bconfig_RTS_OPTIONS
     let rtsOptions1 = [line| +RTS -T $localRTSOptions $globalRTSOptions -RTS |]
     let quickBenchOptions =
             if quickMode
@@ -222,9 +319,9 @@ benchExecOne benchExecPath benchName otherOptions = do
 
 invokeTastyBench :: String -> String -> String -> Context ()
 invokeTastyBench targetProg targetName outputFile = do
-    long_ <- gets config_LONG
-    benchPrefix <- gets config_BENCH_PREFIX
-    gaugeArgs <- gets config_GAUGE_ARGS
+    long_ <- gets bconfig_LONG
+    benchPrefix <- gets bconfig_BENCH_PREFIX
+    gaugeArgs <- gets bconfig_GAUGE_ARGS
     escapedBenchPrefix <-
         liftIO $ runUtf8' [line| echo "$benchPrefix" | sed -e 's/\//\\\//g' |]
     let match
@@ -247,7 +344,7 @@ invokeTastyBench targetProg targetName outputFile = do
 
 runBenchTarget :: String -> String -> String -> Context ()
 runBenchTarget packageName component targetName = do
-    benchmarkPackageVersion <- gets config_BENCHMARK_PACKAGE_VERSION
+    benchmarkPackageVersion <- gets bconfig_BENCHMARK_PACKAGE_VERSION
     mTargetProg <-
         cabalTargetProg
             [line| $packageName-$benchmarkPackageVersion |]
@@ -274,33 +371,48 @@ runBenchesComparing _ = undefined
 backupOutputFile :: String -> Context ()
 backupOutputFile benchName = do
     let outputFile = benchOutputFile benchName
-    append <- gets config_APPEND
+    append <- gets bconfig_APPEND
     exists <- liftIO $ Test.test outputFile Test.exists
     when (not append && exists)
         $ liftIO $ run [line| mv -f -v $outputFile $outputFile.prev |]
 
+getBuildCommand :: Context String
+getBuildCommand = do
+    cabalExecutable <- gets bconfig_CABAL_EXECUTABLE
+    withCompiler <- gets config_CABAL_WITH_COMPILER
+    opts <- gets config_CABAL_BUILD_OPTIONS
+    return [cmdline|
+                $cabalExecutable
+                    v2-build
+                    --flag fusion-plugin
+                    --flag limit-build-mem
+                    --with-compiler $withCompiler
+                    $opts
+                    --enable-benchmarks
+           |]
+
 runMeasurements :: [String] -> Context ()
 runMeasurements benchList = do
     for_ benchList backupOutputFile
-    commitCompare <- gets config_COMMIT_COMPARE
-    buildBench <- gets config_BUILD_BENCH
-    benchPackageName <- gets config_BENCHMARK_PACKAGE_NAME
-    targets <- catIndividuals <$> gets config_TARGETS
+    commitCompare <- gets bconfig_COMMIT_COMPARE
+    buildBench <- getBuildCommand
+    benchPackageName <- gets bconfig_BENCHMARK_PACKAGE_NAME
+    targets <- catIndividuals <$> getTargets
     if commitCompare
     then runBenchesComparing benchList
     else do
-        runBuild buildBench benchPackageName "bench" targets
+        liftIO $ runBuild buildBench benchPackageName "bench" targets
         -- XXX What is target_exe_extra_args here?
         runBenchTargets benchPackageName "b" benchList
 
 runReports :: [String] -> Context ()
 runReports benchmarks = do
-    silent <- gets config_SILENT
-    graphs <- gets config_GRAPH
-    sortByName <- gets config_SORT_BY_NAME
-    diffStyle <- gets config_BENCH_DIFF_STYLE
-    cutOffPercent <- gets config_BENCH_CUTOFF_PERCENT
-    fields <- gets config_FIELDS
+    silent <- gets bconfig_SILENT
+    graphs <- gets bconfig_GRAPH
+    sortByName <- gets bconfig_SORT_BY_NAME
+    diffStyle <- gets bconfig_BENCH_DIFF_STYLE
+    cutOffPercent <- gets bconfig_BENCH_CUTOFF_PERCENT
+    fields <- gets bconfig_FIELDS
     for_ benchmarks
         $ \i -> liftIO $ do
               unless silent $ putStrLn [line| Generating reports for $i... |]
@@ -321,69 +433,42 @@ runReports benchmarks = do
 -- Execution bootstrapping
 -------------------------------------------------------------------------------
 
-bootstrap :: Context ()
-bootstrap = do
-    setCommonVars
-    -- XXX Temporarily skipping comparison vars
-    modify
-        $ \conf ->
-              conf
-                  { config_CABAL_BUILD_OPTIONS =
-                        let cliOpts = config_CABAL_BUILD_OPTIONS conf
-                         in [cmdline| --flag fusion-plugin
-                                      --flag limit-build-mem
-                                      $cliOpts
-                            |]
-                  }
-
-postCLIParsing :: Context ()
-postCLIParsing = do
-    fields <- gets config_FIELDS
-    defFields <- gets config_DEFAULT_FIELDS
-    when (null fields) $ modify $ \conf -> conf {config_FIELDS = defFields}
-    setDerivedVars
-
 printHelpOnArgs :: Context Bool
 printHelpOnArgs = do
-    targets <- gets config_TARGETS
+    targets <- getTargets
     when (hasItem (TIndividual "help") targets) $ do
         listTargets
         listTargetGroups
         listComparisons
-    fields <- gets config_FIELDS
-    allFields <- gets config_ALL_FIELDS
-    defFields <- gets config_DEFAULT_FIELDS
+    fields <- gets bconfig_FIELDS
+    allFields <- gets bconfig_ALL_FIELDS
     when (hasItem "help" fields) $ liftIO $ do
         putStr "Supported fields: "
         putStrLn $ unwords allFields
         putStr "Default fields: "
-        putStrLn $ unwords defFields
+        putStrLn $ unwords $ bconfig_FIELDS defaultConfig
     return $ hasItem "help" fields || hasItem (TIndividual "help") targets
 
 -------------------------------------------------------------------------------
 -- Determine targets
 -------------------------------------------------------------------------------
 
-flagLongSetup :: Context ()
-flagLongSetup = do
-    isLong <- gets config_LONG
-    targets <- gets config_TARGETS
-    let targetsStr = unwords $ catIndividuals targets
-    when (isLong && not (null targets))
+flagLongSetup :: Configuration -> IO [Target]
+flagLongSetup conf@Configuration{..} = do
+    let targetsStr = unwords $ catIndividuals bconfig_TARGETS
+    when (bconfig_LONG && not (null bconfig_TARGETS))
         $ liftIO
         $ die [line| Cannot specify benchmarks [$targetsStr] with --long |]
-    when isLong
-        $ modify $ \conf -> conf {config_TARGETS = config_INFINITE_GRP conf}
 
-setupTargets :: Context ()
-setupTargets = do
-    setTargets_ <- setTargets
-    modify $ \conf -> conf {config_TARGETS = setTargets_}
+    return
+        $ if bconfig_LONG
+          then bconfig_INFINITE_GRP
+          else bconfig_TARGETS
 
-postSettingUpTargets :: Context ()
-postSettingUpTargets = do
-    silent <- gets config_SILENT
-    targetsStr <- unwords . catIndividuals <$> gets config_TARGETS
+printTargets :: Context ()
+printTargets = do
+    silent <- gets bconfig_SILENT
+    targetsStr <- unwords . catIndividuals <$> getTargets
     unless silent
         $ liftIO $ putStrLn [line| "Using benchmark suites [$targetsStr]" |]
 
@@ -393,21 +478,8 @@ postSettingUpTargets = do
 
 buildAndRunTargets :: Context ()
 buildAndRunTargets = do
-    cabalExecutable <- gets config_CABAL_EXECUTABLE
-    buildFlags <- gets config_BUILD_FLAGS
-    cabalBuildOptions <- gets config_CABAL_BUILD_OPTIONS
-    modify
-        $ \conf ->
-              conf
-                  { config_BUILD_BENCH =
-                        [cmdline|
-                            $cabalExecutable
-                                v2-build $buildFlags $cabalBuildOptions
-                                --enable-benchmarks
-                        |]
-                  }
-    measure <- gets config_MEASURE
-    targets <- gets config_TARGETS
+    measure <- gets bconfig_MEASURE
+    targets <- getTargets
     when measure $ runMeasurements (catIndividuals targets)
 
 -------------------------------------------------------------------------------
@@ -427,10 +499,10 @@ buildComparisonResults name constituents = do
 
 runFinalReports :: Context ()
 runFinalReports = do
-    compare <- gets config_COMPARE
-    targets <- gets config_TARGETS
-    comparisons <- gets config_COMPARISONS
-    raw <- gets config_RAW
+    compare <- gets bconfig_COMPARE
+    targets <- getTargets
+    comparisons <- gets bconfig_COMPARISONS
+    raw <- gets bconfig_RAW
     let targetsStr = unwords $ catIndividuals targets
         individualTargets = catIndividuals targets
         comparisonTargets = catComparisons targets
@@ -455,13 +527,9 @@ runFinalReports = do
 
 runPipeline :: Context ()
 runPipeline = do
-    bootstrap
-    postCLIParsing
     hasHelp <- printHelpOnArgs
     unless hasHelp $ do
-         flagLongSetup
-         setupTargets
-         postSettingUpTargets
+         printTargets
          buildAndRunTargets
          runFinalReports
 
@@ -486,12 +554,17 @@ mainWith grpTargets indTargers cmps speedOpts rtsOpts = do
             "A helper tool for benchmarking"
             cliOptions
             empty
-    void
-        $ execStateT runPipeline
-        $ conf
-              { config_GROUP_TARGETS = grpTargets
-              , config_INDIVIDUAL_TARGETS = indTargers
-              , config_COMPARISONS = cmps
-              , config_BENCH_SPEED_OPTIONS = speedOpts
-              , config_BENCH_RTS_OPTIONS = rtsOpts
+    (cabalExe, buildDir) <- getCabalExe
+    targets <- flagLongSetup conf
+    let conf1 =
+            conf
+              { bconfig_TARGETS = targets
+              , bconfig_GROUP_TARGETS = grpTargets
+              , bconfig_INDIVIDUAL_TARGETS = indTargers
+              , bconfig_COMPARISONS = cmps
+              , bconfig_BENCH_SPEED_OPTIONS = speedOpts
+              , bconfig_BENCH_RTS_OPTIONS = rtsOpts
+              , bconfig_BUILD_DIR = buildDir
+              , bconfig_CABAL_EXECUTABLE = cabalExe
               }
+    void $ execStateT runPipeline conf1
