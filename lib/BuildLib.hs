@@ -289,7 +289,7 @@ setCommonVars :: Context ()
 setCommonVars = do
     conf <- get
     let useGitCabal = config_USE_GIT_CABAL conf
-    cabalExe <-
+    (cabalExe, buildDir) <-
             if useGitCabal
             then do
                 r <- liftIO $ which "git-cabal"
@@ -298,13 +298,10 @@ setCommonVars = do
                         liftIO
                             $ putStrLn
                                 "Using git-cabal for branch specific builds"
-                        return "git-cabal"
-                    Nothing -> return "cabal"
-            else return "cabal"
-    buildDir <-
-        if useGitCabal
-        then liftIO $ runUtf8' "git-cabal show-builddir"
-        else return "dist-newstyle"
+                        d <- liftIO $ runUtf8' "git-cabal show-builddir"
+                        return ("git-cabal", d)
+                    Nothing -> return ("cabal", "dist-newstyle")
+            else return ("cabal", "dist-newstyle")
     put
         $ conf
               { config_TARGET_EXE_ARGS = ""
