@@ -23,8 +23,12 @@ import System.IO (hPutStrLn, stderr)
 #endif
 import Text.Read (readMaybe)
 
+#ifdef NO_CHARTS
 import BenchShow.Internal.Common
 import BenchShow.Internal.Report
+#else
+import BenchShow
+#endif
 
 ------------------------------------------------------------------------------
 -- Command line parsing
