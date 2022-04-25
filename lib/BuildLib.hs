@@ -7,7 +7,10 @@ module BuildLib
     , listTargets
     , listTargetGroups
     , listComparisons
+    , getGroupTargets
     , getTargets
+    , printTargets
+    , printHelpOnTargets
     , cabalTargetProg
     , runBuild
     , Quickness(..)
@@ -24,6 +27,7 @@ module BuildLib
 -- Imports
 --------------------------------------------------------------------------------
 
+import Control.Monad (unless)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Reader (ReaderT, asks)
 import Data.List (nub, sort, intercalate, isSuffixOf)
@@ -32,6 +36,7 @@ import Data.Maybe (mapMaybe)
 import Streamly.Coreutils.Which (which)
 import Utils.QuasiQuoter (line)
 
+import qualified Data.List as List
 import qualified Data.Map as Map
 import qualified Streamly.Coreutils.FileTest as Test
 
@@ -46,6 +51,19 @@ data Target
     | TIndividual String
     | TComparisonGroup String
     deriving (Eq)
+
+getGroupTargets :: String -> [(String, [String])] -> Map String [String]
+getGroupTargets suffix = List.foldl' f Map.empty
+
+    where
+
+    f b (k, xs) =
+        let xs1 = filter (\x -> suffix `isSuffixOf` x) xs
+         in List.foldl' (flip (Map.alter (updater k))) b xs1
+
+    updater k Nothing = Just [k]
+    -- XXX insert if not present instead of nub
+    updater k (Just xs) = Just $ List.nub (k : xs)
 
 {-
 targetToString :: Target -> String
@@ -90,6 +108,7 @@ class HasConfig a where
         config_CABAL_BUILD_OPTIONS :: a -> String
         config_CABAL_WITH_COMPILER :: a -> String
         config_TEST_QUICK_MODE :: a -> Bool
+        config_SILENT :: a -> Bool
 
 --------------------------------------------------------------------------------
 -- API
@@ -175,6 +194,23 @@ getTargets = do
                       map TIndividual ((Map.!) comparisons x)
                           ++ flatten grpTargets comparisons ts
                   TIndividual _ -> flatten grpTargets comparisons ts
+
+printTargets :: HasConfig e => ReaderT e IO ()
+printTargets = do
+    silent <- asks config_SILENT
+    targetsStr <- unwords . catIndividuals <$> getTargets
+    unless silent
+        $ liftIO $ putStrLn [line| "Using targets [$targetsStr]" |]
+
+printHelpOnTargets :: HasConfig e => ReaderT e IO Bool
+printHelpOnTargets = do
+    targets <- getTargets
+    if hasItem (TIndividual "help") targets
+    then do
+        listTargets
+        listTargetGroups
+        return True
+    else return False
 
 cabalWhichBuilddir :: HasConfig e =>
     String -> String -> String -> String -> ReaderT e IO String

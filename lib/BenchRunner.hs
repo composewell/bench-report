@@ -85,6 +85,7 @@ instance HasConfig Configuration where
     config_CABAL_BUILD_OPTIONS = bconfig_CABAL_BUILD_OPTIONS
     config_CABAL_WITH_COMPILER = bconfig_CABAL_WITH_COMPILER
     config_TEST_QUICK_MODE = bconfig_TEST_QUICK_MODE
+    config_SILENT = bconfig_SILENT
 
 defaultConfig :: Configuration
 defaultConfig =
@@ -115,6 +116,7 @@ defaultConfig =
         , bconfig_APPEND = False
         , bconfig_COMMIT_COMPARE = False
         , bconfig_BENCHMARK_PACKAGE_NAME = "streamly-benchmarks"
+        -- XXX This is same as ALL_FIELDS
         , bconfig_FIELDS = ["cputime", "allocated", "maxrss"]
         , bconfig_BENCH_CUTOFF_PERCENT = 0
         , bconfig_BENCH_DIFF_STYLE = PercentDiff
@@ -123,11 +125,9 @@ defaultConfig =
         , bconfig_SILENT = False
         , bconfig_RAW = False
         , bconfig_MEASURE = True
-        , bconfig_ALL_FIELDS = ["allocated", "cputime", "allocated", "maxrss"]
+        , bconfig_ALL_FIELDS = ["cputime", "allocated", "maxrss"]
         , bconfig_INFINITE_GRP =
-              [ TGroup "prelude_serial_grp"
-              , TGroup "prelude_concurrent_grp"
-              , TIndividual "Prelude.Rate"
+              [ TGroup "infinite_grp"
               ]
         , bconfig_COMPARE = False
         , bconfig_BENCH_SPEED_OPTIONS = \_ _ -> Nothing
@@ -151,7 +151,7 @@ cliOptions = do
         <*> pure (bconfig_INDIVIDUAL_TARGETS defaultConfig)
         <*> option
                  (eitherReader targetsFromString)
-                 (long "benchmarks"
+                 (long "targets"
                       <> value (bconfig_TARGETS defaultConfig))
         <*> pure (bconfig_TEST_QUICK_MODE defaultConfig)
         <*> pure (bconfig_GHC_VERSION defaultConfig)
@@ -427,10 +427,9 @@ runReports benchmarks = do
 
 printHelpOnArgs :: Context Bool
 printHelpOnArgs = do
+    _ <- printHelpOnTargets
     targets <- getTargets
     when (hasItem (TIndividual "help") targets) $ do
-        listTargets
-        listTargetGroups
         listComparisons
     fields <- asks bconfig_FIELDS
     allFields <- asks bconfig_ALL_FIELDS
@@ -456,13 +455,6 @@ flagLongSetup Configuration{..} = do
         $ if bconfig_LONG
           then bconfig_INFINITE_GRP
           else bconfig_TARGETS
-
-printTargets :: Context ()
-printTargets = do
-    silent <- asks bconfig_SILENT
-    targetsStr <- unwords . catIndividuals <$> getTargets
-    unless silent
-        $ liftIO $ putStrLn [line| "Using benchmark suites [$targetsStr]" |]
 
 -------------------------------------------------------------------------------
 -- Build and run targets
@@ -530,15 +522,13 @@ runPipeline = do
 --------------------------------------------------------------------------------
 
 mainWith ::
-       Map String [String]
-    -> [String]
-    -> Map String [String]
+       [(String, [String])]
     -> (String -> String -> Maybe Quickness)
     -> (String -> String -> String)
     -> IO ()
 
 -- XXX Use a defaultConfig record instead
-mainWith grpTargets indTargers cmps speedOpts rtsOpts = do
+mainWith targetMap speedOpts rtsOpts = do
     (conf, ()) <-
         simpleOptions
             "0.0.0"
@@ -549,11 +539,15 @@ mainWith grpTargets indTargers cmps speedOpts rtsOpts = do
     (cabalExe, buildDir) <- getCabalExe
     ghcVer <- getGhcVersion $ config_CABAL_WITH_COMPILER conf
     targets <- flagLongSetup conf
+    let benchTargetMap = filter (\(_, xs) -> "noBench" `notElem` xs) targetMap
+    let grpTargets = getGroupTargets "_grp" benchTargetMap
+    let indTargets = map fst benchTargetMap
+    let cmps = getGroupTargets "_cmp" benchTargetMap
     let conf1 =
             conf
               { bconfig_TARGETS = targets
               , bconfig_GROUP_TARGETS = grpTargets
-              , bconfig_INDIVIDUAL_TARGETS = indTargers
+              , bconfig_INDIVIDUAL_TARGETS = indTargets
               , bconfig_COMPARISONS = cmps
               , bconfig_BENCH_SPEED_OPTIONS = speedOpts
               , bconfig_BENCH_RTS_OPTIONS = rtsOpts
