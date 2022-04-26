@@ -285,7 +285,7 @@ benchExecOne benchExecPath benchName otherOptions = do
     liftIO $ createDirectoryIfMissing True outputDir
     liftIO $ run [line| rm -f $outputFile.tmp |]
     let benchNameEscaped = shellEscape benchName
-    liftIO $ putStrLn $ "benchNameEscaped: " ++ benchNameEscaped
+    -- liftIO $ putStrLn $ "benchNameEscaped: " ++ benchNameEscaped
     let cmd = [cmdline|
                 $benchExecPath
                     -j 1
@@ -294,9 +294,9 @@ benchExecOne benchExecPath benchName otherOptions = do
                     $quickBenchOptions
                     $otherOptions
                     --csv=$outputFile.tmp
-                    -p '$$0 == "$benchNameEscaped"'
+                    -p '$$0 == "'"$benchNameEscaped"'"'
               |]
-    -- liftIO $ putStrLn $ "Running: " ++ cmd
+    liftIO $ putStrLn $ "Running: " ++ cmd
     liftIO $ cmd `onError` die "Benchmark execution failed."
 
     -- Post-process the output
