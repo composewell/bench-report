@@ -195,6 +195,25 @@ multi =
 -- Shell command
 --------------------------------------------------------------------------------
 
+-- | cmdline quasiquoter parses the string into words as shell would and then
+-- joins the words together so that any insignificant space is removed.
+--
+-- XXX Quotes may interact in interesting ways with string interpolation
+-- leading to surprising behavior because it may not be what you would
+-- expect in shell. For example,
+--
+-- @
+-- x = "a\"quoted\"b"
+-- @
+--
+-- echo "$x" in a shell may not give the same result as @run [line|echo
+-- "$x"|]@. The latter would have the effect of stripping the quotes.
+-- Because it would expand to - echo "a"quoted"b". This is unlike the shell
+-- expansion which will retain the quotes in "$x".
+--
+-- "cmdline" quasiquoter can potentially take care of such cases by
+-- escaping the quotes before expansion if the expansion occurs inside
+-- quotes.
 cmdline :: QuasiQuoter
 cmdline =
     QuasiQuoter

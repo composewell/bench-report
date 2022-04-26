@@ -11,6 +11,7 @@ module Utils
     , onError
     , silently
     , env_SCRIPT_DIR
+    , shellEscape
     ) where
 
 --------------------------------------------------------------------------------
@@ -92,3 +93,13 @@ silently cmd = Sh.srcWith Process.toChunks cmd & Stream.drain
 
 env_SCRIPT_DIR :: MonadIO m => m FilePath
 env_SCRIPT_DIR = takeDirectory <$> liftIO getExecutablePath
+
+shellEscape :: String -> String
+shellEscape = concatMap f
+
+    where
+
+    f '\\' = "\\\\"
+    f '"' = "\\\""
+    f '\'' = "\\\'"
+    f x = [x]

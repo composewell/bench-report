@@ -284,16 +284,9 @@ benchExecOne benchExecPath benchName otherOptions = do
         outputDir = takeDirectory outputFile
     liftIO $ createDirectoryIfMissing True outputDir
     liftIO $ run [line| rm -f $outputFile.tmp |]
-    benchNameEscaped <-
-        liftIO
-            $ runUtf8'
-                  [line| echo "$benchName"
-                       | sed -e 's/\\/\\\\/g'
-                       | sed -e 's/"/\\"/g'
-                       | sed -e "s/'/'\\\''/g"
-                  |]
-    liftIO
-        $ [line|
+    let benchNameEscaped = shellEscape benchName
+    liftIO $ putStrLn $ "benchNameEscaped: " ++ benchNameEscaped
+    let cmd = [cmdline|
                 $benchExecPath
                     -j 1
                     $rtsOptions1
@@ -302,7 +295,9 @@ benchExecOne benchExecPath benchName otherOptions = do
                     $otherOptions
                     --csv=$outputFile.tmp
                     -p '$$0 == "$benchNameEscaped"'
-          |] `onError` die "Benchmark execution failed."
+              |]
+    -- liftIO $ putStrLn $ "Running: " ++ cmd
+    liftIO $ cmd `onError` die "Benchmark execution failed."
 
     -- Post-process the output
     -- Convert cpuTime field from picoseconds to seconds
@@ -335,11 +330,8 @@ invokeTastyBench targetProg targetName outputFile = do
                 >> $outputFile
               |]
     let cmd = [line| $targetProg -l $match | grep "^All" |]
-    -- liftIO $ putStrLn cmd
-    benchmarkNames <-
-        liftIO
-            $ runUtf8 cmd
-            & Stream.toList
+    -- liftIO $ putStrLn $ "Command is: " ++ cmd
+    benchmarkNames <- liftIO $ runUtf8 cmd & Stream.toList
     for_ benchmarkNames $ \name -> benchExecOne targetProg name gaugeArgs
 
 runBenchTarget :: String -> String -> String -> Context ()
