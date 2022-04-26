@@ -3,7 +3,7 @@
 {-# LANGUAGE RecordWildCards #-}
 
 module BenchRunner
-    ( -- mainWith
+    ( mainWith
     )
 where
 
@@ -14,7 +14,7 @@ where
 import BenchShow.Internal.Common (GroupStyle(..))
 import Control.Monad (when, unless, void)
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad.Trans.State.Strict (StateT, execStateT, get, gets, modify)
+import Control.Monad.Trans.Reader (ReaderT, asks, runReaderT)
 import Data.Foldable (for_)
 import Data.Function ((&))
 import Data.List (isSuffixOf)
@@ -134,7 +134,7 @@ defaultConfig =
         , bconfig_BENCH_RTS_OPTIONS = \_ _ -> ""
         }
 
-type Context a = StateT Configuration IO a
+type Context a = ReaderT Configuration IO a
 
 --------------------------------------------------------------------------------
 -- CLI
@@ -235,16 +235,15 @@ benchExecOne benchExecPath benchName otherOptions = do
     -- Determine the options
     ---------------------------------------------------------------------------
 
-    benchSpeedOptions <- gets bconfig_BENCH_SPEED_OPTIONS
-    benchRTSOptions <- gets bconfig_BENCH_RTS_OPTIONS
+    benchSpeedOptions <- asks bconfig_BENCH_SPEED_OPTIONS
+    benchRTSOptions <- asks bconfig_BENCH_RTS_OPTIONS
     let benchBaseName = takeFileName benchExecPath
     -- Using no name conversion
     let superQuickOptions = "--stdev 1000000"
         quickerOptions = "--stdev 100"
         localRTSOptions = benchRTSOptions benchBaseName benchName
-    quickMode <- gets bconfig_QUICK_MODE
-    long_ <- gets bconfig_LONG
-    globalRTSOptions <- gets bconfig_RTS_OPTIONS
+    quickMode <- asks bconfig_QUICK_MODE
+    globalRTSOptions <- asks bconfig_RTS_OPTIONS
     let rtsOptions1 = [line| +RTS -T $localRTSOptions $globalRTSOptions -RTS |]
     let quickBenchOptions =
             if quickMode
@@ -254,6 +253,7 @@ benchExecOne benchExecPath benchName otherOptions = do
                      Just Quicker -> quickerOptions
                      Just SuperQuick -> superQuickOptions
     -- Skipping STREAM_LEN as it is just a display trick
+    long_ <- asks bconfig_LONG
     let streamSize =
             if long_
             then Just (10000000 :: Int)
@@ -319,9 +319,9 @@ benchExecOne benchExecPath benchName otherOptions = do
 
 invokeTastyBench :: String -> String -> String -> Context ()
 invokeTastyBench targetProg targetName outputFile = do
-    long_ <- gets bconfig_LONG
-    benchPrefix <- gets bconfig_BENCH_PREFIX
-    gaugeArgs <- gets bconfig_GAUGE_ARGS
+    long_ <- asks bconfig_LONG
+    benchPrefix <- asks bconfig_BENCH_PREFIX
+    gaugeArgs <- asks bconfig_GAUGE_ARGS
     escapedBenchPrefix <-
         liftIO $ runUtf8' [line| echo "$benchPrefix" | sed -e 's/\//\\\//g' |]
     let match
@@ -344,7 +344,7 @@ invokeTastyBench targetProg targetName outputFile = do
 
 runBenchTarget :: String -> String -> String -> Context ()
 runBenchTarget packageName component targetName = do
-    benchmarkPackageVersion <- gets bconfig_BENCHMARK_PACKAGE_VERSION
+    benchmarkPackageVersion <- asks bconfig_BENCHMARK_PACKAGE_VERSION
     mTargetProg <-
         cabalTargetProg
             [line| $packageName-$benchmarkPackageVersion |]
@@ -371,16 +371,16 @@ runBenchesComparing _ = undefined
 backupOutputFile :: String -> Context ()
 backupOutputFile benchName = do
     let outputFile = benchOutputFile benchName
-    append <- gets bconfig_APPEND
+    append <- asks bconfig_APPEND
     exists <- liftIO $ Test.test outputFile Test.exists
     when (not append && exists)
         $ liftIO $ run [line| mv -f -v $outputFile $outputFile.prev |]
 
 getBuildCommand :: Context String
 getBuildCommand = do
-    cabalExecutable <- gets bconfig_CABAL_EXECUTABLE
-    withCompiler <- gets config_CABAL_WITH_COMPILER
-    opts <- gets config_CABAL_BUILD_OPTIONS
+    cabalExecutable <- asks bconfig_CABAL_EXECUTABLE
+    withCompiler <- asks config_CABAL_WITH_COMPILER
+    opts <- asks config_CABAL_BUILD_OPTIONS
     return [cmdline|
                 $cabalExecutable
                     v2-build
@@ -394,9 +394,9 @@ getBuildCommand = do
 runMeasurements :: [String] -> Context ()
 runMeasurements benchList = do
     for_ benchList backupOutputFile
-    commitCompare <- gets bconfig_COMMIT_COMPARE
+    commitCompare <- asks bconfig_COMMIT_COMPARE
     buildBench <- getBuildCommand
-    benchPackageName <- gets bconfig_BENCHMARK_PACKAGE_NAME
+    benchPackageName <- asks bconfig_BENCHMARK_PACKAGE_NAME
     targets <- catIndividuals <$> getTargets
     if commitCompare
     then runBenchesComparing benchList
@@ -407,12 +407,12 @@ runMeasurements benchList = do
 
 runReports :: [String] -> Context ()
 runReports benchmarks = do
-    silent <- gets bconfig_SILENT
-    graphs <- gets bconfig_GRAPH
-    sortByName <- gets bconfig_SORT_BY_NAME
-    diffStyle <- gets bconfig_BENCH_DIFF_STYLE
-    cutOffPercent <- gets bconfig_BENCH_CUTOFF_PERCENT
-    fields <- gets bconfig_FIELDS
+    silent <- asks bconfig_SILENT
+    graphs <- asks bconfig_GRAPH
+    sortByName <- asks bconfig_SORT_BY_NAME
+    diffStyle <- asks bconfig_BENCH_DIFF_STYLE
+    cutOffPercent <- asks bconfig_BENCH_CUTOFF_PERCENT
+    fields <- asks bconfig_FIELDS
     for_ benchmarks
         $ \i -> liftIO $ do
               unless silent $ putStrLn [line| Generating reports for $i... |]
@@ -440,8 +440,8 @@ printHelpOnArgs = do
         listTargets
         listTargetGroups
         listComparisons
-    fields <- gets bconfig_FIELDS
-    allFields <- gets bconfig_ALL_FIELDS
+    fields <- asks bconfig_FIELDS
+    allFields <- asks bconfig_ALL_FIELDS
     when (hasItem "help" fields) $ liftIO $ do
         putStr "Supported fields: "
         putStrLn $ unwords allFields
@@ -454,7 +454,7 @@ printHelpOnArgs = do
 -------------------------------------------------------------------------------
 
 flagLongSetup :: Configuration -> IO [Target]
-flagLongSetup conf@Configuration{..} = do
+flagLongSetup Configuration{..} = do
     let targetsStr = unwords $ catIndividuals bconfig_TARGETS
     when (bconfig_LONG && not (null bconfig_TARGETS))
         $ liftIO
@@ -467,7 +467,7 @@ flagLongSetup conf@Configuration{..} = do
 
 printTargets :: Context ()
 printTargets = do
-    silent <- gets bconfig_SILENT
+    silent <- asks bconfig_SILENT
     targetsStr <- unwords . catIndividuals <$> getTargets
     unless silent
         $ liftIO $ putStrLn [line| "Using benchmark suites [$targetsStr]" |]
@@ -478,7 +478,7 @@ printTargets = do
 
 buildAndRunTargets :: Context ()
 buildAndRunTargets = do
-    measure <- gets bconfig_MEASURE
+    measure <- asks bconfig_MEASURE
     targets <- getTargets
     when measure $ runMeasurements (catIndividuals targets)
 
@@ -499,10 +499,10 @@ buildComparisonResults name constituents = do
 
 runFinalReports :: Context ()
 runFinalReports = do
-    compare <- gets bconfig_COMPARE
+    compare <- asks bconfig_COMPARE
     targets <- getTargets
-    comparisons <- gets bconfig_COMPARISONS
-    raw <- gets bconfig_RAW
+    comparisons <- asks bconfig_COMPARISONS
+    raw <- asks bconfig_RAW
     let targetsStr = unwords $ catIndividuals targets
         individualTargets = catIndividuals targets
         comparisonTargets = catComparisons targets
@@ -555,6 +555,7 @@ mainWith grpTargets indTargers cmps speedOpts rtsOpts = do
             cliOptions
             empty
     (cabalExe, buildDir) <- getCabalExe
+    ghcVer <- getGhcVersion $ config_CABAL_WITH_COMPILER conf
     targets <- flagLongSetup conf
     let conf1 =
             conf
@@ -566,5 +567,6 @@ mainWith grpTargets indTargers cmps speedOpts rtsOpts = do
               , bconfig_BENCH_RTS_OPTIONS = rtsOpts
               , bconfig_BUILD_DIR = buildDir
               , bconfig_CABAL_EXECUTABLE = cabalExe
+              , bconfig_GHC_VERSION = ghcVer
               }
-    void $ execStateT runPipeline conf1
+    void $ runReaderT runPipeline conf1
