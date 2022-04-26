@@ -296,7 +296,7 @@ benchExecOne benchExecPath benchName otherOptions = do
                     --csv=$outputFile.tmp
                     -p '$$0 == "'"$benchNameEscaped"'"'
               |]
-    liftIO $ putStrLn $ "Running: " ++ cmd
+    -- liftIO $ putStrLn $ "Running: " ++ cmd
     liftIO $ cmd `onError` die "Benchmark execution failed."
 
     -- Post-process the output
