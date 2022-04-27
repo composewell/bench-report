@@ -284,7 +284,8 @@ benchExecOne benchExecPath benchName otherOptions = do
         outputDir = takeDirectory outputFile
     liftIO $ createDirectoryIfMissing True outputDir
     liftIO $ run [line| rm -f $outputFile.tmp |]
-    let benchNameEscaped = shellEscape benchName
+    -- This is used inside two levels of quotes so escape twice
+    let benchNameEscaped = shellEscape $ shellEscape benchName
     -- liftIO $ putStrLn $ "benchNameEscaped: " ++ benchNameEscaped
     let cmd = [cmdline|
                 $benchExecPath
