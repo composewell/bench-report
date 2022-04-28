@@ -117,10 +117,12 @@ smartStringE ln =
         Left _ -> fail "Parsing of interpolated string failed."
         Right xs ->
             -- We need to remove the ' ' at the end that we add for the hack.
-            lineExp
-                $ if last xs == LineContentText " "
-                  then init xs
-                  else xs
+            let x = last xs
+            in lineExp
+                $ case x of
+                    LineContentText t | last t == ' ' ->
+                        init xs <> [LineContentText (init t)]
+                    _ -> xs
 
 --------------------------------------------------------------------------------
 -- Single line string
