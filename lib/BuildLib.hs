@@ -189,7 +189,7 @@ cabalWhichBuilddir  builddir packageNameWithVersion component cmdToFind = do
         co = [line| $component/$cmdToFind$noopt/build/$cmdToFind/$cmdToFind |]
         path = [line| $ghc/$packageNameWithVersion/$co |]
     truePath <- liftIO $ runUtf8' [line| echo $path |]
-    liftIO $ run [line| echo [cabal_which "$truePath"] 1>&2 |]
+    -- liftIO $ run [line| echo [cabal_which "$truePath"] 1>&2 |]
     liftIO $ runUtf8' [line| test -f "$truePath" && echo $truePath |]
 
 cabalWhich :: HasConfig e => String -> String -> String -> ReaderT e IO String
