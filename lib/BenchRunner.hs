@@ -385,18 +385,17 @@ getBuildCommand = do
            |]
 
 runMeasurements :: [String] -> Context ()
-runMeasurements benchList = do
-    for_ benchList backupOutputFile
+runMeasurements targets = do
+    for_ targets backupOutputFile
     commitCompare <- asks bconfig_COMMIT_COMPARE
     buildBench <- getBuildCommand
     benchPackageName <- asks bconfig_BENCHMARK_PACKAGE_NAME
-    targets <- catIndividuals <$> getTargets
     if commitCompare
-    then runBenchesComparing benchList
+    then runBenchesComparing targets
     else do
         liftIO $ runBuild buildBench benchPackageName "bench" targets
         -- XXX What is target_exe_extra_args here?
-        runBenchTargets benchPackageName "b" benchList
+        runBenchTargets benchPackageName "b" targets
 
 runReports :: [String] -> Context ()
 runReports benchmarks = do
