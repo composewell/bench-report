@@ -3,15 +3,15 @@
 module Utils
     ( die
     , warn
-    , run
-    , runVerbose
-    , runUtf8
-    , runUtf8'
-    , run_
+    , Sh.toStdout
+    , toStdoutV
+    , toLines
+    , toLastLine
     , onError
-    , silently
     , env_SCRIPT_DIR
     , shellEscape
+    , wordsQuoted
+    , compactWordsQuoted
     ) where
 
 --------------------------------------------------------------------------------
@@ -25,17 +25,35 @@ import Data.Maybe (fromJust)
 import System.FilePath (takeDirectory)
 import System.Environment (getExecutablePath)
 import Streamly.Internal.System.Process (ProcessFailure)
+import Streamly.Internal.Unicode.String (str)
+import System.IO.Unsafe (unsafePerformIO)
 
 import qualified System.Exit as Exit (die)
-
-import qualified Streamly.Internal.Console.Stdio as Stdio
 import qualified Streamly.Internal.Data.Fold as Fold
+import qualified Streamly.Internal.Data.Parser as Parser
 import qualified Streamly.Internal.Data.Stream.IsStream as Stream
-import qualified Streamly.Internal.Unicode.Stream as Unicode
-import qualified Streamly.System.Process as Process
 import qualified Streamly.System.Sh as Sh
 
-import Utils.QuasiQuoter (line)
+--------------------------------------------------------------------------------
+-- String prettifying utilities
+--------------------------------------------------------------------------------
+
+wordsQuoted :: String -> [String]
+wordsQuoted =
+    unsafePerformIO . Stream.toList . Stream.parseMany parser . Stream.fromList
+
+    where
+
+    isQuote = (`elem` ['"', '\''])
+    isDelimiter = (`elem` [' ', '\n'])
+    parser =
+        Parser.wordQuotedBy (== '\\') isQuote isQuote id isDelimiter Fold.toList
+
+-- | Trim any extra delimiters from a string while preserving the quotes
+-- Delimiters : space ( ), newline (\n)
+-- Quotes     : single quote ('), double quote (")
+compactWordsQuoted :: String -> String
+compactWordsQuoted = unwords . wordsQuoted
 
 --------------------------------------------------------------------------------
 -- Utilities
@@ -44,48 +62,25 @@ import Utils.QuasiQuoter (line)
 -- XXX Re-evaluate the names of these helpers
 
 die :: String -> IO ()
-die x = Exit.die [line| Error: $x |]
+die x = Exit.die [str|Error: #{x}|]
 
 warn :: String -> IO ()
-warn x = Exit.die [line| Warning: $x |]
+warn x = Exit.die [str|Warning: #{x}|]
 
--- XXX toStdout
-run :: String -> IO ()
-run cmd = Sh.srcWith Process.toChunks cmd & Stdio.putChunks
+toStdoutV :: String -> IO ()
+toStdoutV cmd = putStrLn cmd >> Sh.toStdout cmd
 
-runVerbose :: String -> IO ()
-runVerbose cmd = putStrLn cmd >> run cmd
+toLines :: String -> Stream.SerialT IO String
+toLines cmd = Sh.toLines Fold.toList cmd
 
--- XXX rename: toLines
-runUtf8 :: String -> Stream.SerialT IO String
-runUtf8 cmd =
-    Sh.srcWith Process.toChunks cmd & Unicode.decodeUtf8Arrays
-        & Stream.splitOnSuffix (== '\n') Fold.toList
-
--- XXX rename: toLastLine
-runUtf8' :: String -> IO String
-runUtf8' cmd = fmap fromJust (runUtf8 cmd & Stream.last)
-
--- XXX toBool
---
--- Run the command and return the exit status as a Bool. Note that this does not
--- throw any error or stop the execution. This is like a failable runner.
-run_ :: String -> IO Bool
-run_ cmd =
-    putStrLn cmd
-        >> catch
-              (run cmd >> return True)
-              (\(_ :: ProcessFailure) -> return False)
+toLastLine :: String -> IO String
+toLastLine cmd = fmap fromJust (toLines cmd & Stream.last)
 
 onError :: String -> IO () -> IO ()
 onError cmd action =
     catch
-      (run cmd)
+      (Sh.toStdout cmd)
       (\(_ :: ProcessFailure) -> action)
-
--- XXX run_/toNull
-silently :: String -> IO ()
-silently cmd = Sh.srcWith Process.toChunks cmd & Stream.drain
 
 --------------------------------------------------------------------------------
 -- Helpers

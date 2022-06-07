@@ -21,7 +21,7 @@ import Data.List (isSuffixOf)
 import Data.Map (Map)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (takeFileName, takeDirectory, (</>))
-import Utils.QuasiQuoter (line, cmdline)
+import Streamly.Internal.Unicode.String (str)
 
 import qualified BenchReport
 import qualified Data.Map as Map
@@ -33,8 +33,8 @@ import Utils
 import BuildLib
 
 import Prelude hiding (compare)
-import Options.Applicative hiding (Parser)
-import Options.Applicative.Simple
+import Options.Applicative hiding (Parser, str)
+import Options.Applicative.Simple hiding (str)
 
 data Configuration =
     Configuration
@@ -244,7 +244,7 @@ benchExecOne benchExecPath benchName otherOptions = do
         localRTSOptions = benchRTSOptions benchBaseName benchName
     quickMode <- asks bconfig_QUICK_MODE
     globalRTSOptions <- asks bconfig_RTS_OPTIONS
-    let rtsOptions1 = [line| +RTS -T $localRTSOptions $globalRTSOptions -RTS |]
+    let rtsOptions1 = [str|+RTS -T #{localRTSOptions} #{globalRTSOptions} -RTS|]
     let quickBenchOptions =
             if quickMode
             then superQuickOptions
@@ -262,18 +262,20 @@ benchExecOne benchExecPath benchName otherOptions = do
         case show <$> streamSize of
             Just size ->
                 liftIO
-                    $ runUtf8'
-                          [line| env LC_ALL=en_US.UTF-8 printf
-                                 "--stream-size %'.f\n" $size
-                          |]
+                    $ toLastLine
+                          [str|env LC_ALL=en_US.UTF-8 printf #
+                                 "--stream-size %'.f\n" #{size}|]
             Nothing -> return ""
     let streamSizeOpt =
             case show <$> streamSize of
-                Just size -> [line| --stream-size $size |]
+                Just size -> [str|--stream-size #{size}|]
                 Nothing -> ""
-    liftIO $ putStrLn
-        [cmdline| $benchName $rtsOptions1 $streamLen $quickBenchOptions
-                  $otherOptions
+    liftIO $ putStrLn $ compactWordsQuoted
+        [str| #{benchName}
+                  #{rtsOptions1}
+                  #{streamLen}
+                  #{quickBenchOptions}
+                  #{otherOptions}
         |]
 
     ----------------------------------------------------------------------------
@@ -283,19 +285,19 @@ benchExecOne benchExecPath benchName otherOptions = do
     let outputFile = benchOutputFile benchBaseName
         outputDir = takeDirectory outputFile
     liftIO $ createDirectoryIfMissing True outputDir
-    liftIO $ run [line| rm -f $outputFile.tmp |]
+    liftIO $ toStdout [str|rm -f #{outputFile}.tmp|]
     -- This is used inside two levels of quotes so escape twice
     let benchNameEscaped = shellEscape $ shellEscape benchName
     -- liftIO $ putStrLn $ "benchNameEscaped: " ++ benchNameEscaped
-    let cmd = [cmdline|
-                $benchExecPath
+    let cmd = compactWordsQuoted [str|
+                #{benchExecPath}
                     -j 1
-                    $rtsOptions1
-                    $streamSizeOpt
-                    $quickBenchOptions
-                    $otherOptions
-                    --csv=$outputFile.tmp
-                    -p '$$0 == "'"$benchNameEscaped"'"'
+                    #{rtsOptions1}
+                    #{streamSizeOpt}
+                    #{quickBenchOptions}
+                    #{otherOptions}
+                    --csv=#{outputFile.tmp}
+                    -p '$0 == "'"#{benchNameEscaped}"'"'
               |]
     -- liftIO $ putStrLn $ "Running: " ++ cmd
     liftIO $ cmd `onError` die "Benchmark execution failed."
@@ -303,14 +305,14 @@ benchExecOne benchExecPath benchName otherOptions = do
     -- Post-process the output
     -- Convert cpuTime field from picoseconds to seconds
     liftIO
-        $ [line| awk --version 2>&1 | grep -q "GNU Awk"
+        $ [str|awk --version 2>&1 | grep -q "GNU Awk" #
           |] `onError` die "Need GNU awk. [$(which awk)] is not GNU awk."
     liftIO
-        $ run [line|
-                tail -n +2 $outputFile.tmp
-                    | awk 'BEGIN {FPAT = "([^,]+)|(\"[^\"]+\")";OFS=","}
-                            {$$2=$$2/1000000000000;print}'
-                    >> $outputFile
+        $ toStdout [str|                                                 #
+                tail -n +2 #{outputFile}.tmp                             #
+                    | awk 'BEGIN {FPAT = "([^,]+)|(\"[^\"]+\")";OFS=","} #
+                            {$2=$2/1000000000000;print}'                 #
+                    >> #{outputFile}                                     #
               |]
 
 invokeTastyBench :: String -> String -> String -> Context ()
@@ -319,20 +321,20 @@ invokeTastyBench targetProg targetName outputFile = do
     benchPrefix <- asks bconfig_BENCH_PREFIX
     gaugeArgs <- asks bconfig_GAUGE_ARGS
     escapedBenchPrefix <-
-        liftIO $ runUtf8' [line| echo "$benchPrefix" | sed -e 's/\//\\\//g' |]
+        liftIO $ toLastLine [str|echo "#{benchPrefix}" | sed -e 's/\//\\\//g'|]
     let match
-          | long_ = [line| -p "/$targetName\\/o-1-space/" |]
+          | long_ = [str|-p "/#{targetName}\\/o-1-space/"|]
           | null benchPrefix = ""
-          | otherwise = [line| -p "/$escapedBenchPrefix/" |]
+          | otherwise = [str|-p "/#{escapedBenchPrefix}/"|]
     liftIO
-        $ runVerbose
-              [cmdline| echo
+        $ toStdoutV $ compactWordsQuoted
+              [str| echo
                 "Name,cpuTime,2*Stdev (ps),Allocated,bytesCopied,maxrss"
-                >> $outputFile
-              |]
-    let cmd = [line| $targetProg -l $match | grep "^All" |]
+                >> #{outputFile}
+             |]
+    let cmd = [str|#{targetProg} -l #{match} | grep "^All"|]
     -- liftIO $ putStrLn $ "Command is: " ++ cmd
-    benchmarkNames <- liftIO $ runUtf8 cmd & Stream.toList
+    benchmarkNames <- liftIO $ toLines cmd & Stream.toList
     for_ benchmarkNames $ \name -> benchExecOne targetProg name gaugeArgs
 
 runBenchTarget :: String -> String -> String -> Context ()
@@ -340,15 +342,15 @@ runBenchTarget packageName component targetName = do
     benchmarkPackageVersion <- asks bconfig_BENCHMARK_PACKAGE_VERSION
     mTargetProg <-
         cabalTargetProg
-            [line| $packageName-$benchmarkPackageVersion |]
+            [str|#{packageName}-#{benchmarkPackageVersion}|]
             component
             targetName
     case mTargetProg of
         Nothing ->
             liftIO
-                $ die [line| Cannot find executable for target $targetName |]
+                $ die [str|Cannot find executable for target #{targetName}|]
         Just targetProg -> do
-            liftIO $ putStrLn [line| "Running executable $targetName ..." |]
+            liftIO $ putStrLn [str|"Running executable #{targetName} ..."|]
             let outputFile = benchOutputFile targetName
                 outputDir = takeDirectory outputFile
             liftIO $ createDirectoryIfMissing True outputDir
@@ -367,20 +369,20 @@ backupOutputFile benchName = do
     append <- asks bconfig_APPEND
     exists <- liftIO $ Test.test outputFile Test.exists
     when (not append && exists)
-        $ liftIO $ run [line| mv -f -v $outputFile $outputFile.prev |]
+        $ liftIO $ toStdout [str|mv -f -v #{outputFile} #{outputFile}.prev|]
 
 getBuildCommand :: Context String
 getBuildCommand = do
     cabalExecutable <- asks bconfig_CABAL_EXECUTABLE
     withCompiler <- asks config_CABAL_WITH_COMPILER
     opts <- asks config_CABAL_BUILD_OPTIONS
-    return [cmdline|
-                $cabalExecutable
+    return $ compactWordsQuoted [str|
+                #{cabalExecutable}
                     v2-build
                     --flag fusion-plugin
                     --flag limit-build-mem
-                    --with-compiler $withCompiler
-                    $opts
+                    --with-compiler #{withCompiler}
+                    #{opts}
                     --enable-benchmarks
            |]
 
@@ -407,7 +409,7 @@ runReports benchmarks = do
     fields <- asks bconfig_FIELDS
     for_ benchmarks
         $ \i -> liftIO $ do
-              unless silent $ putStrLn [line| Generating reports for $i... |]
+              unless silent $ putStrLn [str|Generating reports for #{i}...|]
               BenchReport.runBenchReport
                   $ BenchReport.defaultOptions
                         { BenchReport.genGraphs = graphs
@@ -449,7 +451,7 @@ flagLongSetup Configuration{..} = do
     let targetsStr = unwords $ catIndividuals bconfig_TARGETS
     when (bconfig_LONG && not (null bconfig_TARGETS))
         $ liftIO
-        $ die [line| Cannot specify benchmarks [$targetsStr] with --long |]
+        $ die [str|Cannot specify benchmarks [#{targetsStr}] with --long|]
 
     return
         $ if bconfig_LONG
@@ -472,14 +474,14 @@ buildAndRunTargets = do
 
 buildComparisonResults :: String -> [String] -> Context ()
 buildComparisonResults name constituents = do
-    liftIO $ createDirectoryIfMissing True [line| charts/$name |]
-    let destFile = [line| charts/$name/results.csv |]
-    liftIO $ runVerbose [cmdline| : > $destFile |]
+    liftIO $ createDirectoryIfMissing True [str|charts/#{name}|]
+    let destFile = [str|charts/#{name}/results.csv|]
+    liftIO $ toStdoutV $ compactWordsQuoted [str| : > #{destFile}|]
     for_ constituents
         $ \j ->
               liftIO
-                  $ runVerbose
-                        [cmdline| cat "charts/$j/results.csv" >> $destFile |]
+                  $ toStdoutV $ compactWordsQuoted
+                        [str| cat "charts/#{j}/results.csv" >> #{destFile}|]
 
 runFinalReports :: Context ()
 runFinalReports = do
@@ -499,11 +501,12 @@ runFinalReports = do
             dynCmpGrpName <-
                 liftIO
                     $ (++ "_cmp")
-                    <$> runUtf8'
-                            [line| echo "$targetsStr" | sed -e 's/ /_/g' |]
+                    <$> toLastLine
+                            [str|echo "#{targetsStr}" | sed -e 's/ /_/g'|]
             buildComparisonResults dynCmpGrpName individualTargets
             unless raw $ runReports [dynCmpGrpName]
-            liftIO $ runVerbose [cmdline| rm -rf "charts/$dynCmpGrpName" |]
+            liftIO $ toStdoutV $ compactWordsQuoted
+                       [str| rm -rf "charts/#{dynCmpGrpName}"|]
 
 --------------------------------------------------------------------------------
 -- Pipeline

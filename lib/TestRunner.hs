@@ -19,7 +19,7 @@ import Data.Map (Map)
 import Data.Maybe (catMaybes)
 import System.FilePath (takeFileName, takeDirectory)
 import System.Environment (setEnv)
-import Utils.QuasiQuoter (line, cmdline)
+import Streamly.Internal.Unicode.String (str)
 
 import qualified Data.Map as Map
 import qualified Options.Applicative as OptParse
@@ -29,8 +29,8 @@ import Utils
 import BuildLib
 
 import Prelude hiding (compare)
-import Options.Applicative hiding (Parser)
-import Options.Applicative.Simple
+import Options.Applicative hiding (Parser, str)
+import Options.Applicative.Simple hiding (str)
 
 -- XXX Abstract out config that is common to tests and benchmarks
 data Configuration =
@@ -154,42 +154,41 @@ getRTSOptions benchExecPath benchName = do
     let benchBaseName = takeFileName benchExecPath
         localRTSOptions = benchRTSOptions benchBaseName benchName
     globalRTSOptions <- asks bconfig_RTS_OPTIONS
-    return [line| +RTS -T $localRTSOptions $globalRTSOptions -RTS |]
+    return [str|+RTS -T #{localRTSOptions} #{globalRTSOptions} -RTS|]
 
 invokeHspec :: String -> String -> Context ()
 invokeHspec targetProg targetName = do
     rtsOpts <- getRTSOptions targetProg targetName
     otherOptions <- asks bconfig_GAUGE_ARGS
-    liftIO $ putStrLn [cmdline| $targetName $rtsOpts $otherOptions|]
-    let cmd = [line| $targetProg $rtsOpts $otherOptions |]
-    -- liftIO $ putStrLn cmd
+    let cmd = [str|#{targetProg} #{rtsOpts} #{otherOptions}|]
+    liftIO $ putStrLn $ compactWordsQuoted cmd
     liftIO $ cmd `onError` die "Target execution failed."
 
 getSystem :: IO String
 getSystem = do
-    uname <- runUtf8' "uname"
+    uname <- toLastLine "uname"
     if uname == "Linux"
     then return "x86_64-linux"
     else error $ "Unsupported system: " ++ uname
 
 streamlySrcDir = "."
 streamlyVer = "0.8.2"
-streamlyPkg = [line|streamly-$streamlyVer|]
+streamlyPkg = [str|streamly-#{streamlyVer}|]
 
 streamlyCoreSrcDir = "core"
 streamlyCoreVer = "0.1.0"
-streamlyCorePkg = [line|streamly-core-$streamlyCoreVer|]
+streamlyCorePkg = [str|streamly-core-#{streamlyCoreVer}|]
 
 getHPCPrefix pkg = do
     buildDir <- asks bconfig_BUILD_DIR
     ghcVer <- asks bconfig_GHC_VERSION
     system <- liftIO getSystem
-    return [line|${buildDir}/build/${system}/ghc-${ghcVer}/${pkg}/hpc/vanilla|]
+    return [str|#{buildDir}/build/#{system}/ghc-#{ghcVer}/#{pkg}/hpc/vanilla|]
 
 getTixFile target = do
     prefix <- getHPCPrefix streamlyPkg
     -- liftIO $ putStrLn $ "[" ++ prefix ++ "]"
-    return [line|${prefix}/tix/${target}/${target}.tix|]
+    return [str|#{prefix}/tix/#{target}/#{target}.tix|]
 
 getMixDirs = mapM f [streamlyPkg, streamlyCorePkg]
 
@@ -197,31 +196,31 @@ getMixDirs = mapM f [streamlyPkg, streamlyCorePkg]
 
     f pkg = do
         prefix <- getHPCPrefix pkg
-        return [line|${prefix}/mix/${pkg}|]
+        return [str|#{prefix}/mix/#{pkg}|]
 
 runBenchTarget :: String -> String -> String -> Context ()
 runBenchTarget packageName component targetName = do
     benchmarkPackageVersion <- asks bconfig_BENCHMARK_PACKAGE_VERSION
     mTargetProg <-
         cabalTargetProg
-            [line| $packageName-$benchmarkPackageVersion |]
+            [str|#{packageName}-#{benchmarkPackageVersion}|]
             component
             targetName
     case mTargetProg of
         Nothing ->
             liftIO
-                $ die [line| Cannot find executable for target $targetName |]
+                $ die [str|Cannot find executable for target #{targetName}|]
         Just targetProg -> do
-            liftIO $ putStrLn [line| "Running executable $targetName ..." |]
+            liftIO $ putStrLn [str|"Running executable #{targetName} ..."|]
             coverage <- asks bconfig_COVERAGE
             if coverage
             then do
                 tixFile <- getTixFile targetName
                 let tixDir = takeDirectory tixFile
-                liftIO $ run [line|mkdir -p $tixDir|]
+                liftIO $ toStdout [str|mkdir -p #{tixDir}|]
                 liftIO $ setEnv "HPCTIXFILE" tixFile
                 invokeHspec targetProg targetName
-                liftIO $ run [line|rmdir $tixDir 2>/dev/null || true|]
+                liftIO $ toStdout [str|rmdir #{tixDir} 2>/dev/null || true|]
             else invokeHspec targetProg targetName
 
 runBenchTargets :: String -> String -> [String] -> Context ()
@@ -246,15 +245,15 @@ getBuildCommand = do
     -- With the --enable-coverage option the tests as well as the library get
     -- compiled with -fhpc, and we get coverage for tests as well. But we want
     -- to exclude that, so a project file is needed.
-    return [cmdline|
-                $cabalExecutable
+    return $ compactWordsQuoted [str|
+                #{cabalExecutable}
                     v2-build
-                    $projectFile
+                    #{projectFile}
                     --flag limit-build-mem
-                    $dev
-                    $quick
-                    --with-compiler $withCompiler
-                    $opts
+                    #{dev}
+                    #{quick}
+                    --with-compiler #{withCompiler}
+                    #{opts}
                     --enable-tests
            |]
 
@@ -267,7 +266,7 @@ runMeasurements targets = do
     coverage <- asks bconfig_COVERAGE
     when coverage $ do
         buildDir <- asks bconfig_BUILD_DIR
-        liftIO $ run [line|mkdir -p $buildDir/hpc|]
+        liftIO $ toStdout [str|mkdir -p #{buildDir}/hpc|]
     runBenchTargets benchPackageName "t" targets
 
 -------------------------------------------------------------------------------
@@ -299,22 +298,22 @@ runFinalReports = do
         xs1 <- liftIO $ mapM checkFile xs
         let tixFiles = unwords $ catMaybes xs1
         buildDir <- asks bconfig_BUILD_DIR
-        let allTix = [line|$buildDir/hpc/all.tix|]
+        let allTix = [str|#{buildDir}/hpc/all.tix|]
         -- XXX allTix/tixFiles cannot have double quotes in it
         liftIO
-            $ runVerbose [line|hpc sum --union --output="$allTix" $tixFiles|]
+            $ toStdoutV [str|hpc sum --union --output="#{allTix}" #{tixFiles}|]
 
         let srcDirs =
                 unwords
                     $ map
-                        (\x -> [line|--srcdir "$x"|])
+                        (\x -> [str|--srcdir "#{x}"|])
                         [streamlySrcDir, streamlyCoreSrcDir]
         mixDirs <- getMixDirs
-        let mixArgs = unwords $ map (\x -> [line|--hpcdir "$x"|]) mixDirs
-        liftIO $ runVerbose [line|hpc markup "$allTix" $mixArgs $srcDirs|]
+        let mixArgs = unwords $ map (\x -> [str|--hpcdir "#{x}"|]) mixDirs
+        liftIO $ toStdoutV [str|hpc markup "#{allTix}" #{mixArgs} #{srcDirs}|]
         liftIO
-            $ runVerbose
-                [line|hpc report "$allTix" $hpcOptions $mixArgs $srcDirs|]
+            $ toStdoutV
+                [str|hpc report "#{allTix}" #{hpcOptions} #{mixArgs} #{srcDirs}|]
         return ()
 
         where

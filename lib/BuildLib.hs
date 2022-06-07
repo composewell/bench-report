@@ -34,7 +34,7 @@ import Data.List (nub, sort, intercalate, isSuffixOf)
 import Data.Map (Map)
 import Data.Maybe (mapMaybe)
 import Streamly.Coreutils.Which (which)
-import Utils.QuasiQuoter (line)
+import Streamly.Internal.Unicode.String (str)
 
 import qualified Data.List as List
 import qualified Data.Map as Map
@@ -200,7 +200,7 @@ printTargets = do
     silent <- asks config_SILENT
     targetsStr <- unwords . catIndividuals <$> getTargets
     unless silent
-        $ liftIO $ putStrLn [line| "Using targets [$targetsStr]" |]
+        $ liftIO $ putStrLn [str|"Using targets [#{targetsStr}]"|]
 
 printHelpOnTargets :: HasConfig e => ReaderT e IO Bool
 printHelpOnTargets = do
@@ -221,12 +221,12 @@ cabalWhichBuilddir  builddir packageNameWithVersion component cmdToFind = do
             if env_TEST_QUICK_MODE
             then "/noopt"
             else ""
-        ghc = [line| $builddir/build/*/ghc-${env_GHC_VERSION} |]
-        co = [line| $component/$cmdToFind$noopt/build/$cmdToFind/$cmdToFind |]
-        path = [line| $ghc/$packageNameWithVersion/$co |]
-    truePath <- liftIO $ runUtf8' [line| echo $path |]
-    -- liftIO $ run [line| echo [cabal_which "$truePath"] 1>&2 |]
-    liftIO $ runUtf8' [line| test -f "$truePath" && echo $truePath |]
+        ghc = [str|#{builddir}/build/*/ghc-#{env_GHC_VERSION}|]
+        co = [str|#{component}/#{cmdToFind}#{noopt}/build/#{cmdToFind}/#{cmdToFind}|]
+        path = [str|#{ghc}/#{packageNameWithVersion}/#{co}|]
+    truePath <- liftIO $ toLastLine [str|echo #{path}|]
+    -- liftIO $ run [str|echo [cabal_which "$truePath"] 1>&2|]
+    liftIO $ toLastLine [str|test -f "#{truePath}" && echo #{truePath}|]
 
 cabalWhich :: HasConfig e => String -> String -> String -> ReaderT e IO String
 cabalWhich packageNameWithVersion component cmdToFind = do
@@ -251,16 +251,16 @@ getCabalExe = do
             liftIO
                 $ putStrLn
                     "Using git-cabal for branch specific builds"
-            d <- runUtf8' "git-cabal show-builddir"
+            d <- toLastLine "git-cabal show-builddir"
             return ("git-cabal", d)
         Nothing -> return ("cabal", "dist-newstyle")
 
 getGhcVersion :: String -> IO String
-getGhcVersion ghc = liftIO $ runUtf8' [line| $ghc --numeric-version |]
+getGhcVersion ghc = liftIO $ toLastLine [str|#{ghc} --numeric-version|]
 
 runBuild :: String -> String -> String -> [String] -> IO ()
 runBuild buildProg package componentPrefix components = do
     let componentsWithContext =
-            map (\c -> [line| $package:$componentPrefix:$c |]) components
+            map (\c -> [str|#{package}:#{componentPrefix}:#{c}|]) components
         componentsWithContextStr = unwords componentsWithContext
-    runVerbose [line| $buildProg $componentsWithContextStr |]
+    toStdoutV [str|#{buildProg} #{componentsWithContextStr}|]
