@@ -7,6 +7,9 @@ description: Benchmark reporting application is not included in the overall
   Benchmark reporting has a lot of dependencies that usually lag behind
   when new GHC releases arrive.
 
+extra-doc-files:
+    README.md
+
 flag no-charts
   description: Don't generate svg charts
   manual: True
