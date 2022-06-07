@@ -1,0 +1,8 @@
+.packcheck.ignore
+.github/workflows/packcheck.yml
+cabal.project
+cabal.project.user
+bin/bench-runner.sh
+bin/build-lib.sh
+default.nix
+.gitignore
