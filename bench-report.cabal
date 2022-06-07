@@ -33,7 +33,6 @@ library
     if flag(no-charts)
       cpp-options: -DNO_CHARTS
     exposed-modules:  Utils
-                    , Utils.QuasiQuoter
                     , BenchRunner
                     , TestRunner
                     , BuildLib
