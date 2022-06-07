@@ -37,7 +37,7 @@ library
                     , TestRunner
                     , BuildLib
                     , BenchReport
-    build-depends:    base ^>=4.14.3.0
+    build-depends:    base
                     , streamly
                     , streamly-shell
                     , streamly-process
