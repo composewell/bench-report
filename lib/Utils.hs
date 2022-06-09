@@ -47,7 +47,14 @@ wordsQuoted =
     isQuote = (`elem` ['"', '\''])
     isDelimiter = (`elem` [' ', '\n'])
     parser =
-        Parser.wordQuotedBy (== '\\') isQuote isQuote id isDelimiter Fold.toList
+        Parser.wordQuotedBy
+            True
+            (== '\\')
+            isQuote
+            isQuote
+            id
+            isDelimiter
+            Fold.toList
 
 -- | Trim any extra delimiters from a string while preserving the quotes
 -- Delimiters : space ( ), newline (\n)
