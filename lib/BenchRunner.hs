@@ -270,8 +270,9 @@ benchExecOne benchExecPath benchName otherOptions = do
             case show <$> streamSize of
                 Just size -> [str|--stream-size #{size}|]
                 Nothing -> ""
+    -- benchName might have some single quotes. We need to escape them.
     liftIO $ putStrLn $ compactWordsQuoted
-        [str| #{benchName}
+        [str| "#{benchName}"
                   #{rtsOptions1}
                   #{streamLen}
                   #{quickBenchOptions}
