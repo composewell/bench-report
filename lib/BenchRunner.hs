@@ -270,9 +270,10 @@ benchExecOne benchExecPath benchName otherOptions = do
             case show <$> streamSize of
                 Just size -> [str|--stream-size #{size}|]
                 Nothing -> ""
-    -- benchName might have some single quotes. We need to escape them.
-    liftIO $ putStrLn $ compactWordsQuoted
-        [str| "#{benchName}"
+    -- benchName might have some single quotes and double quotes. We need to
+    -- escape them.
+    liftIO $ putStrLn $ compactWordsQuoted $ escapeAll
+        [str| #{benchName}
                   #{rtsOptions1}
                   #{streamLen}
                   #{quickBenchOptions}
@@ -297,7 +298,7 @@ benchExecOne benchExecPath benchName otherOptions = do
                     #{streamSizeOpt}
                     #{quickBenchOptions}
                     #{otherOptions}
-                    --csv=#{outputFile.tmp}
+                    --csv=#{outputFile}.tmp
                     -p '$0 == "'"#{benchNameEscaped}"'"'
               |]
     -- liftIO $ putStrLn $ "Running: " ++ cmd

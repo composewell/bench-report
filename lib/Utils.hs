@@ -10,6 +10,7 @@ module Utils
     , onError
     , env_SCRIPT_DIR
     , shellEscape
+    , escapeAll
     , wordsQuoted
     , compactWordsQuoted
     ) where
@@ -103,5 +104,16 @@ shellEscape = concatMap f
 
     f '\\' = "\\\\"
     f '"' = "\\\""
+    -- f '\'' = "\\\'"
+    f x = [x]
+
+escapeAll :: String -> String
+escapeAll = concatMap f
+
+    where
+
+    f '\\' = "\\\\"
+    f '"' = "\\\""
+    f '\'' = "\\'"
     -- f '\'' = "\\\'"
     f x = [x]
