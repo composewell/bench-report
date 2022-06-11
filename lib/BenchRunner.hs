@@ -289,7 +289,8 @@ benchExecOne benchExecPath benchName otherOptions = do
     liftIO $ createDirectoryIfMissing True outputDir
     liftIO $ toStdout [str|rm -f #{outputFile}.tmp|]
     -- This is used inside two levels of quotes so escape twice
-    let benchNameEscaped = shellEscape $ shellEscape benchName
+    -- Need to escape it the third time as compactWordsQuoted eats escape chars
+    let benchNameEscaped = shellEscape $ shellEscape $ shellEscape benchName
     -- liftIO $ putStrLn $ "benchNameEscaped: " ++ benchNameEscaped
     let cmd = compactWordsQuoted [str|
                 #{benchExecPath}
