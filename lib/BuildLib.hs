@@ -238,7 +238,7 @@ cabalTargetProg :: HasConfig e =>
 cabalTargetProg packageNameWithVersion component target = do
     targetProg <- cabalWhich packageNameWithVersion component target
     -- XXX Check if executable
-    res <- liftIO $ Test.test targetProg Test.exists
+    res <- liftIO $ Test.test targetProg Test.isExisting
     if res
     then return (Just targetProg)
     else return Nothing

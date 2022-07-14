@@ -319,7 +319,7 @@ runFinalReports = do
         where
 
         checkFile fp = do
-            r <- FileTest.test fp FileTest.exists
+            r <- FileTest.test fp FileTest.isExisting
             if r
             then return $ Just fp
             else do

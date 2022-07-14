@@ -370,7 +370,7 @@ backupOutputFile :: String -> Context ()
 backupOutputFile benchName = do
     let outputFile = benchOutputFile benchName
     append <- asks bconfig_APPEND
-    exists <- liftIO $ Test.test outputFile Test.exists
+    exists <- liftIO $ Test.test outputFile Test.isExisting
     when (not append && exists)
         $ liftIO $ toStdout [str|mv -f -v #{outputFile} #{outputFile}.prev|]
 
