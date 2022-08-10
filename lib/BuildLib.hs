@@ -27,14 +27,16 @@ module BuildLib
 -- Imports
 --------------------------------------------------------------------------------
 
+import Control.Exception (catch)
 import Control.Monad (unless)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Reader (ReaderT, asks)
 import Data.List (nub, sort, intercalate, isSuffixOf)
 import Data.Map (Map)
-import Data.Maybe (mapMaybe)
+import Data.Maybe (catMaybes, mapMaybe)
 import Streamly.Coreutils.Which (which)
 import Streamly.Internal.Unicode.String (str)
+import Streamly.System.Process (ProcessFailure)
 
 import qualified Data.List as List
 import qualified Data.Map as Map
@@ -258,9 +260,19 @@ getCabalExe = do
 getGhcVersion :: String -> IO String
 getGhcVersion ghc = liftIO $ toLastLine [str|#{ghc} --numeric-version|]
 
-runBuild :: String -> String -> String -> [String] -> IO ()
-runBuild buildProg package componentPrefix components = do
-    let componentsWithContext =
-            map (\c -> [str|#{package}:#{componentPrefix}:#{c}|]) components
-        componentsWithContextStr = unwords componentsWithContext
-    toStdoutV [str|#{buildProg} #{componentsWithContextStr}|]
+runBuild :: String -> String -> String -> [String] -> IO [String]
+runBuild buildProg package componentPrefix components =
+    catMaybes <$> mapM action components
+
+    where
+
+    actionBuildTarget c = do
+        toStdoutV [str|#{buildProg} #{package}:#{componentPrefix}:#{c}|]
+        return (Just c)
+
+    actionOnError c = do
+        print $ "Warning: Target does not exist:" ++ c
+        return Nothing
+
+    action c =
+        catch (actionBuildTarget c) (\(_ :: ProcessFailure) -> actionOnError c)
