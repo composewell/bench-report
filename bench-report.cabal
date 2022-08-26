@@ -42,6 +42,7 @@ library
                     , BenchReport
     build-depends:    base
                     , streamly
+                    , streamly-core
                     , streamly-shell
                     , streamly-process
                     , exceptions
