@@ -27,7 +27,8 @@ import qualified BenchReport
 import qualified Data.Map as Map
 import qualified Options.Applicative as OptParse
 import qualified Streamly.Coreutils.FileTest as Test
-import qualified Streamly.Internal.Data.Stream.IsStream as Stream
+import qualified Streamly.Data.Fold as Fold
+import qualified Streamly.Data.Stream as Stream
 
 import Utils
 import BuildLib
@@ -337,7 +338,7 @@ invokeTastyBench targetProg targetName outputFile = do
              |]
     let cmd = [str|#{targetProg} -l #{match} | grep "^All"|]
     -- liftIO $ putStrLn $ "Command is: " ++ cmd
-    benchmarkNames <- liftIO $ toLines cmd & Stream.toList
+    benchmarkNames <- liftIO $ toLines cmd & Stream.fold Fold.toList
     for_ benchmarkNames $ \name -> benchExecOne targetProg name gaugeArgs
 
 runBenchTarget :: String -> String -> String -> Context ()
