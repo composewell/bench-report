@@ -30,9 +30,10 @@ import Streamly.Internal.Unicode.String (str)
 import System.IO.Unsafe (unsafePerformIO)
 
 import qualified System.Exit as Exit (die)
-import qualified Streamly.Internal.Data.Fold as Fold
-import qualified Streamly.Internal.Data.Parser as Parser
-import qualified Streamly.Internal.Data.Stream.IsStream as Stream
+import qualified Streamly.Data.Fold as Fold
+import qualified Streamly.Data.Stream as Stream
+import qualified Streamly.Internal.Data.Stream as Stream (parseMany)
+import qualified Streamly.Internal.Data.Parser as Parser (wordQuotedBy)
 import qualified Streamly.System.Sh as Sh
 
 --------------------------------------------------------------------------------
@@ -41,7 +42,8 @@ import qualified Streamly.System.Sh as Sh
 
 wordsQuoted :: String -> [String]
 wordsQuoted =
-    unsafePerformIO . Stream.toList . Stream.parseMany parser . Stream.fromList
+    unsafePerformIO
+        . Stream.fold Fold.toList . Stream.parseMany parser . Stream.fromList
 
     where
 
@@ -78,11 +80,11 @@ warn x = Exit.die [str|Warning: #{x}|]
 toStdoutV :: String -> IO ()
 toStdoutV cmd = putStrLn cmd >> Sh.toStdout cmd
 
-toLines :: String -> Stream.SerialT IO String
+toLines :: String -> Stream.Stream IO String
 toLines cmd = Sh.toLines Fold.toList cmd
 
 toLastLine :: String -> IO String
-toLastLine cmd = fmap fromJust (toLines cmd & Stream.last)
+toLastLine cmd = fmap fromJust (toLines cmd & Stream.fold Fold.last)
 
 onError :: String -> IO () -> IO ()
 onError cmd action =
