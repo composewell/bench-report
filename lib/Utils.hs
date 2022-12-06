@@ -43,7 +43,10 @@ import qualified Streamly.System.Sh as Sh
 wordsQuoted :: String -> [String]
 wordsQuoted =
     unsafePerformIO
-        . Stream.fold Fold.toList . Stream.parseMany parser . Stream.fromList
+        . Stream.fold Fold.toList
+        . Stream.catRights
+        . Stream.parseMany parser
+        . Stream.fromList
 
     where
 
