@@ -14,7 +14,7 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/composewell/streamly-coreutils.git
-  tag: e51fe704dfd029784a6b504ac178e841e68ce02a
+  tag: master
 
 source-repository-package
   type: git
