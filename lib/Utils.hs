@@ -22,17 +22,16 @@ module Utils
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Catch (MonadCatch(..))
 import Data.Function ((&))
+import Data.Functor.Identity (runIdentity)
 import Data.Maybe (fromJust)
 import System.FilePath (takeDirectory)
 import System.Environment (getExecutablePath)
 import Streamly.Internal.System.Process (ProcessFailure)
 import Streamly.Internal.Unicode.String (str)
-import System.IO.Unsafe (unsafePerformIO)
 
 import qualified System.Exit as Exit (die)
 import qualified Streamly.Data.Fold as Fold
 import qualified Streamly.Data.Stream as Stream
-import qualified Streamly.Internal.Data.Stream as Stream (parseMany)
 import qualified Streamly.Internal.Data.Parser as Parser (wordQuotedBy)
 import qualified Streamly.System.Sh as Sh
 
@@ -42,7 +41,7 @@ import qualified Streamly.System.Sh as Sh
 
 wordsQuoted :: String -> [String]
 wordsQuoted =
-    unsafePerformIO
+    runIdentity
         . Stream.fold Fold.toList
         . Stream.catRights
         . Stream.parseMany parser
