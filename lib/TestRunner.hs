@@ -361,7 +361,7 @@ mainWith targetMap rtsOpts = do
     let testTargetMap = filter (\(_, xs) -> "noTest" `notElem` xs) targetMap
     let testTargetMap1 =
             if bconfig_RUNNING_DEVBUILD conf
-            then targetMap
+            then testTargetMap
             else filter (\(_, xs) -> "testDevOnly" `notElem` xs) testTargetMap
     let grpTargets = getGroupTargets "_grp" testTargetMap1
     let indTargets = map fst testTargetMap1
