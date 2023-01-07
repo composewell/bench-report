@@ -43,7 +43,7 @@ wordsQuoted :: String -> [String]
 wordsQuoted =
     runIdentity
         . Stream.fold Fold.toList
-        . Stream.catRights
+        . fmap (either (error . show) id)
         . Stream.parseMany parser
         . Stream.fromList
 
