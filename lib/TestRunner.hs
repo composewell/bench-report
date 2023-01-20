@@ -133,8 +133,8 @@ cliOptions = do
         <*> pure (bconfig_BENCH_RTS_OPTIONS defaultConfig)
         <*> switch (long "silent")
         <*> unswitch (long "no-measure")
-        <*> pure (bconfig_BENCHMARK_PACKAGE_NAME defaultConfig)
-        <*> pure (bconfig_BENCHMARK_PACKAGE_VERSION defaultConfig)
+        <*> strOption (long "package-name")
+        <*> strOption (long "package-version")
         <*> strOption
               (long "gauge-args" <> value (bconfig_GAUGE_ARGS defaultConfig))
         <*> switch (long "raw")

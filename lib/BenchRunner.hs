@@ -174,10 +174,10 @@ cliOptions = do
               (long "prefix" <> value (bconfig_BENCH_PREFIX defaultConfig))
         <*> strOption
               (long "gauge-args" <> value (bconfig_GAUGE_ARGS defaultConfig))
-        <*> pure (bconfig_BENCHMARK_PACKAGE_VERSION defaultConfig)
+        <*> strOption (long "package-version")
         <*> switch (long "append")
         <*> switch (long "commit-compare")
-        <*> pure (bconfig_BENCHMARK_PACKAGE_NAME defaultConfig)
+        <*> strOption (long "package-name")
         <*> (words
                  <$> strOption
                        (long "fields"
