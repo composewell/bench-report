@@ -3,12 +3,12 @@ packages: .
 source-repository-package
    type: git
    location: https://github.com/composewell/streamly.git
-   tag: master
+   tag: 8240f5f870fe47623df99514aed6a542f80c9641
 
 source-repository-package
   type: git
   location: https://github.com/composewell/streamly.git
-  tag: master
+  tag: 8240f5f870fe47623df99514aed6a542f80c9641
   subdir: core
 
 source-repository-package
@@ -24,6 +24,6 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/composewell/streamly-process.git
-  tag: master
+  tag: 2ef6e7492e435f9666d950f0dc1f39d2e10048d8
 
 jobs: 1

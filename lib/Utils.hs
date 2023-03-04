@@ -32,7 +32,7 @@ import Streamly.Internal.Unicode.String (str)
 import qualified System.Exit as Exit (die)
 import qualified Streamly.Data.Fold as Fold
 import qualified Streamly.Data.Stream as Stream
-import qualified Streamly.Internal.Data.Parser as Parser (wordQuotedBy)
+import qualified Streamly.Internal.Data.Parser as Parser (wordWithQuotes)
 import qualified Streamly.System.Sh as Sh
 
 --------------------------------------------------------------------------------
@@ -49,15 +49,22 @@ wordsQuoted =
 
     where
 
-    isQuote = (`elem` ['"', '\''])
     isDelimiter = (`elem` [' ', '\n'])
+
+    toRQuote x =
+        case x of
+            '"' -> Just x
+            '\'' -> Just x
+            _ -> Nothing
+            
+    trEsc q x = if q == x then Just x else Nothing
+
     parser =
-        Parser.wordQuotedBy
+        Parser.wordWithQuotes
             True
-            (== '\\')
-            isQuote
-            isQuote
-            id
+            trEsc
+            '\\'
+            toRQuote
             isDelimiter
             Fold.toList
 
