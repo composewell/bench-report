@@ -1,6 +1,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module BenchRunner
     ( mainWith
@@ -12,6 +13,7 @@ where
 --------------------------------------------------------------------------------
 
 import BenchShow.Internal.Common (GroupStyle(..))
+import Control.Exception (catch, throwIO)
 import Control.Monad (when, unless, void)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Reader (ReaderT, asks, runReaderT)
@@ -22,6 +24,7 @@ import Data.Map (Map)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (takeFileName, takeDirectory, (</>))
 import Streamly.Internal.Unicode.String (str)
+import Streamly.System.Process (ProcessFailure(..))
 
 import qualified BenchReport
 import qualified Data.Map as Map
@@ -303,8 +306,8 @@ benchExecOne benchExecPath benchName otherOptions = do
                     --csv=#{outputFile}.tmp
                     -p '$0 == "'"#{benchNameEscaped}"'"'
               |]
-    -- liftIO $ putStrLn $ "Running: " ++ cmd
-    liftIO $ cmd `onError` die "Benchmark execution failed."
+    liftIO $ putStrLn $ "Running: " ++ cmd
+    liftIO $ cmd `onError` die ("Benchmark command failed:\n" ++ cmd)
 
     -- Post-process the output
     -- Convert cpuTime field from picoseconds to seconds
@@ -338,7 +341,12 @@ invokeTastyBench targetProg targetName outputFile = do
              |]
     let cmd = [str|#{targetProg} -l #{match} | grep "^All"|]
     -- liftIO $ putStrLn $ "Command is: " ++ cmd
-    benchmarkNames <- liftIO $ toLines cmd & Stream.fold Fold.toList
+    let onErr (e :: ProcessFailure) =
+            putStrLn ("Command failed:\n" ++ cmd) >> throwIO e
+    benchmarkNames <-
+        liftIO ((toLines cmd & Stream.fold Fold.toList) `catch` onErr)
+    when (null benchmarkNames)
+        $ liftIO $ putStrLn $ "No benchmarks returned by the command: " ++ cmd
     for_ benchmarkNames $ \name -> benchExecOne targetProg name gaugeArgs
 
 runBenchTarget :: String -> String -> String -> Context ()
@@ -354,7 +362,7 @@ runBenchTarget packageName component targetName = do
             liftIO
                 $ die [str|Cannot find executable for target #{targetName}|]
         Just targetProg -> do
-            liftIO $ putStrLn [str|"Running executable #{targetName} ..."|]
+            liftIO $ putStrLn [str|"Running executable #{targetProg} ..."|]
             let outputFile = benchOutputFile targetName
                 outputDir = takeDirectory outputFile
             liftIO $ createDirectoryIfMissing True outputDir
