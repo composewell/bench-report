@@ -23,6 +23,7 @@ import Data.List (isSuffixOf)
 import Data.Map (Map)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (takeFileName, takeDirectory, (</>))
+import System.IO (BufferMode(LineBuffering), hSetBuffering, stderr, stdout)
 import Streamly.Internal.Unicode.String (str)
 import Streamly.System.Process (ProcessFailure(..))
 
@@ -544,6 +545,8 @@ mainWith ::
 
 -- XXX Use a defaultConfig record instead
 mainWith targetMap speedOpts rtsOpts = do
+    hSetBuffering stdout LineBuffering
+    hSetBuffering stderr LineBuffering
     (conf, ()) <-
         simpleOptions
             "0.0.0"
