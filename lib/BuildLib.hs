@@ -272,7 +272,8 @@ runBuild buildProg package componentPrefix components =
 
     actionOnError c = do
         print $ "Warning: Target does not exist:" ++ c
-        return Nothing
+        error $ "Error: Target does not exist:" ++ c
+        --return Nothing
 
     action c =
         catch (actionBuildTarget c) (\(_ :: ProcessFailure) -> actionOnError c)
