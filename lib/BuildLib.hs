@@ -272,8 +272,7 @@ runBuild buildProg package componentPrefix components =
         return (Just c)
 
     actionOnError c = do
-        print $ "Warning: Target does not exist:" ++ c
-        error $ "Error: Target does not exist:" ++ c
+        --print $ "Warning: Target does not exist:" ++ c
         throwM $ ProcessFailure 2
         --return Nothing
 
