@@ -28,6 +28,7 @@ module BuildLib
 --------------------------------------------------------------------------------
 
 import Control.Exception (catch)
+import Control.Monad.Catch (throwM)
 import Control.Monad (unless)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Reader (ReaderT, asks)
@@ -36,7 +37,7 @@ import Data.Map (Map)
 import Data.Maybe (catMaybes, mapMaybe)
 import Streamly.Coreutils.Which (which)
 import Streamly.Internal.Unicode.String (str)
-import Streamly.System.Process (ProcessFailure)
+import Streamly.System.Process (ProcessFailure(..))
 
 import qualified Data.List as List
 import qualified Data.Map as Map
@@ -273,6 +274,7 @@ runBuild buildProg package componentPrefix components =
     actionOnError c = do
         print $ "Warning: Target does not exist:" ++ c
         error $ "Error: Target does not exist:" ++ c
+        throwM $ ProcessFailure 2
         --return Nothing
 
     action c =
