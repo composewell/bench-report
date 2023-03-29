@@ -29,6 +29,7 @@ common compile-options
                         -Wno-all-missed-specialisations
     default-extensions: TemplateHaskell
                       , QuasiQuotes
+                      , ScopedTypeVariables
     default-language:   Haskell2010
 
 library

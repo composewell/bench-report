@@ -407,9 +407,10 @@ runMeasurements targets = do
     if commitCompare
     then runBenchesComparing targets
     else do
-        liftIO $ runBuild buildBench benchPackageName "bench" targets
+        buildableTargets <-
+            liftIO $ runBuild buildBench benchPackageName "bench" targets
         -- XXX What is target_exe_extra_args here?
-        runBenchTargets benchPackageName "b" targets
+        runBenchTargets benchPackageName "b" buildableTargets
 
 runReports :: [String] -> Context ()
 runReports benchmarks = do
