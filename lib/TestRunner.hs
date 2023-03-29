@@ -261,13 +261,14 @@ runMeasurements :: [String] -> Context ()
 runMeasurements targets = do
     buildCmd <- getBuildCommand
     benchPackageName <- asks bconfig_BENCHMARK_PACKAGE_NAME
-    liftIO $ runBuild buildCmd benchPackageName "test" targets
+    buildableTargets <-
+        liftIO $ runBuild buildCmd benchPackageName "test" targets
 
     coverage <- asks bconfig_COVERAGE
     when coverage $ do
         buildDir <- asks bconfig_BUILD_DIR
         liftIO $ toStdout [str|mkdir -p #{buildDir}/hpc|]
-    runBenchTargets benchPackageName "t" targets
+    runBenchTargets benchPackageName "t" buildableTargets
 
 -------------------------------------------------------------------------------
 -- Build and run targets
