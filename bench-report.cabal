@@ -40,19 +40,26 @@ library
                     , TestRunner
                     , BuildLib
                     , BenchReport
-    build-depends:    base
-                    , streamly
-                    , streamly-core
+
+    build-depends:    base                 >= 4.12   && < 4.19
+                    , exceptions           >= 0.8.0  && < 0.11
+                    , template-haskell     >= 2.14   && < 2.20
+                    , filepath             >= 1.2    && < 1.5
+                    , containers           >= 0.6.0  && < 0.7
+                    , transformers         >= 0.2    && < 0.7
+                    , directory            >= 1.2    && < 1.4
+                    , optparse-applicative >= 0.14.2 && < 0.18
+                    , optparse-simple      >= 0.1.0  && < 0.2
+
+                    -- Managed Dependencies
+                    , streamly-core        >= 0.1.0  && < 0.2.0
+                    , streamly-process     >= 0.1    && < 0.4
+                    , bench-show           == 0.3.2.*
+
+                    -- The following dependencies are not released on
+                    -- hackage. Make sure the env has appropriate versions of
+                    -- these libs when importing bench-report
                     , streamly-shell
-                    , streamly-process
-                    , exceptions
-                    , template-haskell
-                    , filepath
-                    , bench-show
                     , streamly-coreutils
-                    , containers
-                    , transformers
-                    , directory
-                    , optparse-applicative
-                    , optparse-simple
+
     hs-source-dirs:   lib
