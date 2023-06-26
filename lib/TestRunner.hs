@@ -19,7 +19,7 @@ import Data.Map (Map)
 import Data.Maybe (catMaybes)
 import System.FilePath (takeFileName, takeDirectory)
 import System.Environment (setEnv)
-import Streamly.Internal.Unicode.String (str)
+import Streamly.Unicode.String (str)
 
 import qualified Data.Map as Map
 import qualified Options.Applicative as OptParse

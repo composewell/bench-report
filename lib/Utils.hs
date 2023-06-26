@@ -26,13 +26,13 @@ import Data.Functor.Identity (runIdentity)
 import Data.Maybe (fromJust)
 import System.FilePath (takeDirectory)
 import System.Environment (getExecutablePath)
-import Streamly.Internal.System.Process (ProcessFailure)
-import Streamly.Internal.Unicode.String (str)
+import Streamly.System.Process (ProcessFailure)
+import Streamly.Unicode.String (str)
 
 import qualified System.Exit as Exit (die)
 import qualified Streamly.Data.Fold as Fold
 import qualified Streamly.Data.Stream as Stream
-import qualified Streamly.Internal.Data.Parser as Parser (wordWithQuotes)
+import qualified Streamly.Data.Parser as Parser (wordWithQuotes)
 import qualified Streamly.System.Sh as Sh
 
 --------------------------------------------------------------------------------
@@ -56,7 +56,7 @@ wordsQuoted =
             '"' -> Just x
             '\'' -> Just x
             _ -> Nothing
-            
+
     trEsc q x = if q == x then Just x else Nothing
 
     parser =
