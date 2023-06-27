@@ -23,7 +23,7 @@ import Data.List (isSuffixOf)
 import Data.Map (Map)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (takeFileName, takeDirectory, (</>))
-import Streamly.Internal.Unicode.String (str)
+import Streamly.Unicode.String (str)
 import Streamly.System.Process (ProcessFailure(..))
 
 import qualified BenchReport

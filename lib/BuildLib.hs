@@ -34,7 +34,7 @@ import Data.List (nub, sort, intercalate, isSuffixOf)
 import Data.Map (Map)
 import Data.Maybe (mapMaybe)
 import Streamly.Coreutils.Which (which)
-import Streamly.Internal.Unicode.String (str)
+import Streamly.Unicode.String (str)
 
 import qualified Data.List as List
 import qualified Data.Map as Map
