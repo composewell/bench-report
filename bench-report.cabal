@@ -52,7 +52,7 @@ library
                     , optparse-simple      >= 0.1.0  && < 0.2
 
                     -- Managed Dependencies
-                    , streamly-core        >= 0.1.0  && < 0.2.0
+                    , streamly-core        >= 0.1.0  && < 0.2.1
                     , streamly-process     >= 0.1    && < 0.4
                     , bench-show           == 0.3.2.*
 
