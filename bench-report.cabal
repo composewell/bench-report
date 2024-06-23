@@ -41,18 +41,18 @@ library
                     , BuildLib
                     , BenchReport
 
-    build-depends:    base                 >= 4.12   && < 4.19
+    build-depends:    base                 >= 4.12   && < 4.21
                     , exceptions           >= 0.8.0  && < 0.11
-                    , template-haskell     >= 2.14   && < 2.20
-                    , filepath             >= 1.2    && < 1.5
-                    , containers           >= 0.6.0  && < 0.7
+                    , template-haskell     >= 2.14   && < 2.23
+                    , filepath             >= 1.2    && < 1.6
+                    , containers           >= 0.6.0  && < 0.8
                     , transformers         >= 0.2    && < 0.7
                     , directory            >= 1.2    && < 1.4
-                    , optparse-applicative >= 0.14.2 && < 0.18
+                    , optparse-applicative >= 0.14.2 && < 0.19
                     , optparse-simple      >= 0.1.0  && < 0.2
 
                     -- Managed Dependencies
-                    , streamly-core        >= 0.1.0  && < 0.2.1
+                    , streamly-core        >= 0.1.0  && < 0.4
                     , streamly-process     >= 0.1    && < 0.4
                     , bench-show           == 0.3.2.*
 
