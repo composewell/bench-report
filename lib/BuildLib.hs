@@ -142,6 +142,7 @@ listTargets :: HasConfig e => ReaderT e IO ()
 listTargets = do
     res <- allGrp
     liftIO $ putStrLn "Individual targets:"
+    liftIO $ putStrLn "-------------------"
     liftIO $ putStr $ unlines res
 
 -- XXX pass as arg?
@@ -150,6 +151,7 @@ listTargetGroups = do
     grpTargets <- asks config_GROUP_TARGETS
     let xs = Map.foldrWithKey (\k v b -> b ++ [pretty k v]) [] grpTargets
     liftIO $ putStrLn "Benchmark groups:"
+    liftIO $ putStrLn "-----------------"
     liftIO $ putStr $ unlines xs
 
     where
@@ -159,6 +161,7 @@ listTargetGroups = do
 listComparisons :: HasConfig e => ReaderT e IO ()
 listComparisons = do
     liftIO $ putStrLn "Comparison groups:"
+    liftIO $ putStrLn "------------------"
     res <- asks config_COMPARISONS
     let xs = Map.foldrWithKey (\k_ v_ b -> b ++ [pretty k_ v_]) [] res
     liftIO $ putStr $ unlines xs
