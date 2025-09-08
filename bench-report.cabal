@@ -53,7 +53,7 @@ library
 
                     -- Managed Dependencies
                     , streamly-core        >= 0.1.0  && < 0.4
-                    , streamly-process     >= 0.1    && < 0.4
+                    , streamly-process     >= 0.1    && < 0.5
                     , bench-show           == 0.3.2.*
 
                     -- The following dependencies are not released on
