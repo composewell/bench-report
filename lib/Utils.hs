@@ -28,7 +28,6 @@ import System.FilePath (takeDirectory)
 import System.Environment (getExecutablePath)
 import Streamly.System.Process (ProcessFailure)
 import Streamly.Unicode.String (str)
-import Streamly.Data.Stream (Stream)
 
 import qualified System.Exit as Exit (die)
 import qualified Streamly.Data.Fold as Fold
@@ -79,12 +78,9 @@ compactWordsQuoted = unwords . wordsQuoted
 -- Shell Helpers
 --------------------------------------------------------------------------------
 
-{-# INLINE runWith #-}
-runWith :: (FilePath -> [String] -> m a) -> String -> m a
-runWith f cmd = f "/bin/sh" ["-c", cmd]
-
-streamWith :: (FilePath -> [String] -> Stream m a) -> String -> Stream m a
-streamWith f cmd = f "/bin/sh" ["-c", cmd]
+{-# INLINE interpreter #-}
+interpreter :: (FilePath -> [String] -> a) -> String -> a
+interpreter f cmd = f "/bin/sh" ["-c", cmd]
 
 --------------------------------------------------------------------------------
 -- Utilities
@@ -93,8 +89,7 @@ streamWith f cmd = f "/bin/sh" ["-c", cmd]
 -- XXX Re-evaluate the names of these helpers
 
 toStdout :: String -> IO ()
-toStdout = runWith Process.toStdout
-
+toStdout = interpreter Process.toStdout
 
 die :: String -> IO ()
 die x = Exit.die [str|Error: #{x}|]
@@ -106,10 +101,10 @@ toStdoutV :: String -> IO ()
 toStdoutV cmd = putStrLn cmd >> toStdout cmd
 
 toLines :: String -> Stream.Stream IO String
-toLines cmd = streamWith (Process.toLines Fold.toList) cmd
+toLines cmd = interpreter (Process.toLines Fold.toList) cmd
 
 toLastLine :: String -> IO String
-toLastLine cmd = fmap fromJust (toLines cmd & Stream.fold Fold.last)
+toLastLine cmd = fmap fromJust (toLines cmd & Stream.fold Fold.latest)
 
 onError :: String -> IO () -> IO ()
 onError cmd action =
