@@ -1,5 +1,11 @@
 packages: .
 
+package bench-show
+  flags: +no-charts
+
+package bench-report
+  flags: +no-charts
+
 -- source-repository-package
 --    type: git
 --    location: https://github.com/composewell/streamly.git
@@ -14,11 +20,6 @@ packages: .
 source-repository-package
   type: git
   location: https://github.com/composewell/streamly-coreutils.git
-  tag: master
-
-source-repository-package
-  type: git
-  location: https://github.com/composewell/streamly-shell.git
   tag: master
 
 -- source-repository-package
