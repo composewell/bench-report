@@ -3,7 +3,7 @@
 module Utils
     ( die
     , warn
-    , Sh.toStdout
+    , toStdout
     , toStdoutV
     , toLines
     , toLastLine
@@ -28,12 +28,13 @@ import System.FilePath (takeDirectory)
 import System.Environment (getExecutablePath)
 import Streamly.System.Process (ProcessFailure)
 import Streamly.Unicode.String (str)
+import Streamly.Data.Stream (Stream)
 
 import qualified System.Exit as Exit (die)
 import qualified Streamly.Data.Fold as Fold
 import qualified Streamly.Data.Stream as Stream
 import qualified Streamly.Data.Parser as Parser (wordWithQuotes)
-import qualified Streamly.System.Sh as Sh
+import qualified Streamly.System.Process as Process
 
 --------------------------------------------------------------------------------
 -- String prettifying utilities
@@ -75,10 +76,25 @@ compactWordsQuoted :: String -> String
 compactWordsQuoted = unwords . wordsQuoted
 
 --------------------------------------------------------------------------------
+-- Shell Helpers
+--------------------------------------------------------------------------------
+
+{-# INLINE runWith #-}
+runWith :: (FilePath -> [String] -> m a) -> String -> m a
+runWith f cmd = f "/bin/sh" ["-c", cmd]
+
+streamWith :: (FilePath -> [String] -> Stream m a) -> String -> Stream m a
+streamWith f cmd = f "/bin/sh" ["-c", cmd]
+
+--------------------------------------------------------------------------------
 -- Utilities
 --------------------------------------------------------------------------------
 
 -- XXX Re-evaluate the names of these helpers
+
+toStdout :: String -> IO ()
+toStdout = runWith Process.toStdout
+
 
 die :: String -> IO ()
 die x = Exit.die [str|Error: #{x}|]
@@ -87,10 +103,10 @@ warn :: String -> IO ()
 warn x = Exit.die [str|Warning: #{x}|]
 
 toStdoutV :: String -> IO ()
-toStdoutV cmd = putStrLn cmd >> Sh.toStdout cmd
+toStdoutV cmd = putStrLn cmd >> toStdout cmd
 
 toLines :: String -> Stream.Stream IO String
-toLines cmd = Sh.toLines Fold.toList cmd
+toLines cmd = streamWith (Process.toLines Fold.toList) cmd
 
 toLastLine :: String -> IO String
 toLastLine cmd = fmap fromJust (toLines cmd & Stream.fold Fold.last)
@@ -98,7 +114,7 @@ toLastLine cmd = fmap fromJust (toLines cmd & Stream.fold Fold.last)
 onError :: String -> IO () -> IO ()
 onError cmd action =
     catch
-      (Sh.toStdout cmd)
+      (toStdout cmd)
       (\(_ :: ProcessFailure) -> action)
 
 --------------------------------------------------------------------------------

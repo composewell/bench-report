@@ -5,6 +5,7 @@
 module BenchReport
     ( Options (..)
     , BenchType (..)
+    , parseOptions
     , defaultOptions
     , runBenchReport
     )
