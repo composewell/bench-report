@@ -33,7 +33,7 @@ import qualified System.Exit as Exit (die)
 import qualified Streamly.Data.Fold as Fold
 import qualified Streamly.Data.Stream as Stream
 import qualified Streamly.Data.Parser as Parser (wordWithQuotes)
-import qualified Streamly.System.Sh as Sh
+import qualified Streamly.Coreutils.Sh as Sh
 
 --------------------------------------------------------------------------------
 -- String prettifying utilities
