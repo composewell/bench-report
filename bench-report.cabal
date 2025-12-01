@@ -44,7 +44,6 @@ library
 
     build-depends:    base                 >= 4.12   && < 4.22
                     , exceptions           >= 0.8.0  && < 0.11
-                    , template-haskell     >= 2.14   && < 2.24
                     , filepath             >= 1.2    && < 1.6
                     , containers           >= 0.6.0  && < 0.9
                     , transformers         >= 0.2    && < 0.7
