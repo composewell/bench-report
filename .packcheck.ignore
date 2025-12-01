@@ -1,8 +1,10 @@
 .packcheck.ignore
 .github/workflows/packcheck.yml
-cabal.project
-cabal.project.user
+.gitignore
 bin/bench-runner.sh
 bin/build-lib.sh
-default.nix
-.gitignore
+cabal.project
+cabal.project.user
+flake.lock
+flake.nix
+sources.nix
