@@ -265,5 +265,10 @@ runBuild :: String -> String -> String -> [String] -> IO ()
 runBuild buildProg package componentPrefix components = do
     let componentsWithContext =
             map (\c -> [str|#{package}:#{componentPrefix}:#{c}|]) components
+    {-
         componentsWithContextStr = unwords componentsWithContext
     toStdoutV [str|#{buildProg} #{componentsWithContextStr}|]
+    -}
+    -- Build the targets serially, one at a time so that we can see the ghc
+    -- memory stats to find out memory used by each target
+    mapM_ (\x -> toStdoutV [str|#{buildProg} #{x}|]) componentsWithContext
