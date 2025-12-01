@@ -93,7 +93,7 @@ toLines :: String -> Stream.Stream IO String
 toLines cmd = Sh.toLines Fold.toList cmd
 
 toLastLine :: String -> IO String
-toLastLine cmd = fmap fromJust (toLines cmd & Stream.fold Fold.last)
+toLastLine cmd = fmap fromJust (toLines cmd & Stream.fold Fold.latest)
 
 onError :: String -> IO () -> IO ()
 onError cmd action =

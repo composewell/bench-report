@@ -25,6 +25,7 @@ common compile-options
                         -Wno-missing-deriving-strategies
                         -Wno-monomorphism-restriction
                         -Wno-missing-local-signatures
+                        -Wno-missing-kind-signatures
                         -Wno-missed-specialisations
                         -Wno-all-missed-specialisations
     default-extensions: TemplateHaskell
