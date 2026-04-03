@@ -1,0 +1,12 @@
+cradle:
+  multi:
+    - path: "./"
+      config:
+        cradle:
+          cabal:
+            - path: "./lib"
+              component: "lib:bench-report"
+
+dependencies:
+  - bench-report.cabal
+  - hie.yaml
