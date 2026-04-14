@@ -166,6 +166,7 @@ jobs:
             # WARNING! cannot use # comments inside pack_options.
             pack_options: >-
               CABAL_PROJECT=cabal.project.user
+              CABAL_BUILD_OPTIONS="--allow-newer"
 
           - name: ci
             runner: macos-latest
@@ -217,6 +218,7 @@ jobs:
             pack_options: >-
               DISABLE_SDIST_BUILD="y"
               CABAL_PROJECT=cabal.project.user
+              CABAL_BUILD_OPTIONS="--allow-newer"
 
           - name: ci
             runner: ubuntu-latest
