@@ -7,4 +7,5 @@ cabal.project
 cabal.project.user
 flake.lock
 flake.nix
+hie.yaml
 sources.nix
