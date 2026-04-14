@@ -42,13 +42,13 @@ library
                     , BuildLib
                     , BenchReport
 
-    build-depends:    base                 >= 4.12   && < 4.22
+    build-depends:    base                 >= 4.12   && < 4.23
                     , exceptions           >= 0.8.0  && < 0.11
                     , filepath             >= 1.2    && < 1.6
                     , containers           >= 0.6.0  && < 0.9
                     , transformers         >= 0.2    && < 0.7
                     , directory            >= 1.2    && < 1.4
-                    , optparse-applicative >= 0.14.2 && < 0.19
+                    , optparse-applicative >= 0.14.2 && < 0.20
                     , optparse-simple      >= 0.1.0  && < 0.2
 
                     -- Managed Dependencies
