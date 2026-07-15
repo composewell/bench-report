@@ -26,12 +26,14 @@ import System.FilePath (takeFileName, takeDirectory, (</>))
 import Streamly.Unicode.String (str)
 import Streamly.System.Process (ProcessFailure(..))
 
+import BenchReport (ghcDumpdirName)
 import qualified BenchReport
 import qualified Data.Map as Map
 import qualified Options.Applicative as OptParse
 import qualified Streamly.Coreutils.FileTest as Test
 import qualified Streamly.Data.Fold as Fold
 import qualified Streamly.Data.Stream as Stream
+import qualified Streamly.System.Command as Cmd
 
 import Utils
 import BuildLib
@@ -75,6 +77,7 @@ data Configuration =
         , bconfig_ALL_FIELDS :: [String]
         , bconfig_INFINITE_GRP :: [Target]
         , bconfig_COMPARE :: Bool
+        , bconfig_CORE_SIZES :: Bool
         , bconfig_BENCH_SPEED_OPTIONS :: String -> String -> Maybe Quickness
         , bconfig_BENCH_RTS_OPTIONS :: String -> String -> String
         }
@@ -134,6 +137,7 @@ defaultConfig =
               [ TGroup "infinite_grp"
               ]
         , bconfig_COMPARE = False
+        , bconfig_CORE_SIZES = False
         , bconfig_BENCH_SPEED_OPTIONS = \_ _ -> Nothing
         , bconfig_BENCH_RTS_OPTIONS = \_ _ -> ""
         }
@@ -204,6 +208,7 @@ cliOptions = do
         <*> pure (bconfig_ALL_FIELDS defaultConfig)
         <*> pure (bconfig_INFINITE_GRP defaultConfig)
         <*> switch (long "compare")
+        <*> switch (long "core-sizes")
         <*> pure (bconfig_BENCH_SPEED_OPTIONS defaultConfig)
         <*> pure (bconfig_BENCH_RTS_OPTIONS defaultConfig)
 
@@ -383,15 +388,47 @@ backupOutputFile benchName = do
     when (not append && exists)
         $ liftIO $ toStdout [str|mv -f -v #{outputFile} #{outputFile}.prev|]
 
+getGhcDumpdirPath :: IO String
+getGhcDumpdirPath = do
+    -- cabal runs ghc from where the cabal file is, so relative dumpdir
+    -- path will be relative to that. So use absolute path to keep it in the
+    -- project root.
+    projectRoot <- Cmd.toString "pwd"
+    -- XXX ensure there is no space at the end of projectRoot
+    pure $ [str|#{projectRoot}/#{ghcDumpdirName}|]
+
+coreSizeCsvSuffix :: String
+coreSizeCsvSuffix = ".core-sizes.csv"
+
+getCoreSizeFiles :: Context (String, [String])
+getCoreSizeFiles = do
+    dumpdir <- liftIO getGhcDumpdirPath
+    files <-
+        liftIO
+            $ Stream.fold Fold.toList
+            $ toLines [str|ls #{dumpdir} 2>/dev/null || true|]
+    return (dumpdir, filter (coreSizeCsvSuffix `isSuffixOf`) files)
+
+backupCoreSizes :: Context ()
+backupCoreSizes = do
+    append <- asks bconfig_APPEND
+    (dumpdir, files) <- getCoreSizeFiles
+    when (not append)
+        $ for_ files
+        $ \f -> liftIO $ toStdout [str|mv -f -v #{dumpdir}/#{f} #{dumpdir}/#{f}.bak|]
+
 getBuildCommand :: Context String
 getBuildCommand = do
     cabalExecutable <- asks bconfig_CABAL_EXECUTABLE
     withCompiler <- asks config_CABAL_WITH_COMPILER
     opts <- asks config_CABAL_BUILD_OPTIONS
+    dumpdir <- liftIO getGhcDumpdirPath
     return $ compactWordsQuoted [str|
                 #{cabalExecutable}
                     v2-build
                     --flag fusion-plugin
+                    --ghc-options=-fplugin-opt=Fusion.Plugin:csv-append
+                    --ghc-options=-dumpdir="#{dumpdir}"
                     --flag limit-build-mem
                     --with-compiler #{withCompiler}
                     #{opts}
@@ -400,7 +437,10 @@ getBuildCommand = do
 
 runMeasurements :: [String] -> Context ()
 runMeasurements targets = do
-    for_ targets backupOutputFile
+    coreSizes <- asks bconfig_CORE_SIZES
+    if coreSizes
+    then backupCoreSizes
+    else for_ targets backupOutputFile
     commitCompare <- asks bconfig_COMMIT_COMPARE
     buildBench <- getBuildCommand
     benchPackageName <- asks bconfig_BENCHMARK_PACKAGE_NAME
@@ -409,17 +449,17 @@ runMeasurements targets = do
     else do
         liftIO $ runBuild buildBench benchPackageName "bench" targets
         -- XXX What is target_exe_extra_args here?
-        runBenchTargets benchPackageName "b" targets
+        when (not coreSizes) $ runBenchTargets benchPackageName "b" targets
 
-runReports :: [String] -> Context ()
-runReports benchmarks = do
+runReports :: (String -> BenchReport.BenchType) -> [String] -> Context ()
+runReports mkBenchType items = do
     silent <- asks bconfig_SILENT
     graphs <- asks bconfig_GRAPH
     sortByName <- asks bconfig_SORT_BY_NAME
     diffStyle <- asks bconfig_BENCH_DIFF_STYLE
     cutOffPercent <- asks bconfig_BENCH_CUTOFF_PERCENT
     fields <- asks bconfig_FIELDS
-    for_ benchmarks
+    for_ items
         $ \i -> liftIO $ do
               unless silent $ putStrLn [str|Generating reports for #{i}...|]
               BenchReport.runBenchReport
@@ -429,10 +469,7 @@ runReports benchmarks = do
                         , BenchReport.fields = fields
                         , BenchReport.diffStyle = diffStyle
                         , BenchReport.cutOffPercent = cutOffPercent
-                        , BenchReport.benchType = Just $
-                            if "_cmp" `isSuffixOf` i
-                            then BenchReport.Compare i
-                            else BenchReport.Standard i
+                        , BenchReport.benchType = Just (mkBenchType i)
                         }
 
 -------------------------------------------------------------------------------
@@ -495,30 +532,46 @@ buildComparisonResults name constituents = do
                   $ toStdoutV $ compactWordsQuoted
                         [str| cat "charts/#{j}/results.csv" >> #{destFile}|]
 
+benchReportType :: String -> BenchReport.BenchType
+benchReportType i
+    | "_cmp" `isSuffixOf` i = BenchReport.Compare i
+    | otherwise = BenchReport.Standard i
+
+getCoreSizeModules :: Context [String]
+getCoreSizeModules = do
+    (_, files) <- getCoreSizeFiles
+    return $ map (\f -> take (length f - length coreSizeCsvSuffix) f) files
+
 runFinalReports :: Context ()
 runFinalReports = do
     compare <- asks bconfig_COMPARE
     targets <- getTargets
     comparisons <- asks bconfig_COMPARISONS
     raw <- asks bconfig_RAW
+    coreSizes <- asks bconfig_CORE_SIZES
     let targetsStr = unwords $ catIndividuals targets
         individualTargets = catIndividuals targets
         comparisonTargets = catComparisons targets
-    unless raw $ runReports individualTargets
-    for_ comparisonTargets
-        $ \i -> buildComparisonResults i (comparisons Map.! i)
-    unless raw $ runReports comparisonTargets
-    when compare
-        $ do
-            dynCmpGrpName <-
-                liftIO
-                    $ (++ "_cmp")
-                    <$> toLastLine
-                            [str|echo "#{targetsStr}" | sed -e 's/ /_/g'|]
-            buildComparisonResults dynCmpGrpName individualTargets
-            unless raw $ runReports [dynCmpGrpName]
-            liftIO $ toStdoutV $ compactWordsQuoted
-                       [str| rm -rf "charts/#{dynCmpGrpName}"|]
+    if coreSizes
+    then unless raw $ do
+        modules <- getCoreSizeModules
+        runReports BenchReport.CoreSize modules
+    else do
+        unless raw $ runReports benchReportType individualTargets
+        for_ comparisonTargets
+            $ \i -> buildComparisonResults i (comparisons Map.! i)
+        unless raw $ runReports benchReportType comparisonTargets
+        when compare
+            $ do
+                dynCmpGrpName <-
+                    liftIO
+                        $ (++ "_cmp")
+                        <$> toLastLine
+                                [str|echo "#{targetsStr}" | sed -e 's/ /_/g'|]
+                buildComparisonResults dynCmpGrpName individualTargets
+                unless raw $ runReports benchReportType [dynCmpGrpName]
+                liftIO $ toStdoutV $ compactWordsQuoted
+                           [str| rm -rf "charts/#{dynCmpGrpName}"|]
 
 --------------------------------------------------------------------------------
 -- Pipeline

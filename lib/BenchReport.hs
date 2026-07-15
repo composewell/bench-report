@@ -7,6 +7,7 @@ module BenchReport
     , BenchType (..)
     , defaultOptions
     , runBenchReport
+    , ghcDumpdirName
     )
 where
 
@@ -37,6 +38,7 @@ import BenchShow
 data BenchType
     = Compare String
     | Standard String
+    | CoreSize String -- ^ Module name; input is core-size/<mod>.core-sizes.csv
     deriving Show
 
 data Options = Options
@@ -262,6 +264,9 @@ benchShow Options{..} cfg func inp out =
     then func cfg {outputDir = Just out} inp
     else ignoringErr $ report inp Nothing cfg
 
+ghcDumpdirName :: String
+ghcDumpdirName = "dumpdir"
+
 runBenchReport :: Options -> IO ()
 runBenchReport opts@Options{fields = fs, benchType = btype} =
             let cfg = defaultConfig
@@ -284,5 +289,11 @@ runBenchReport opts@Options{fields = fs, benchType = btype} =
                         (makeGraphs str)
                         ("charts/" ++ str ++ "/results.csv")
                         ("charts/" ++ str)
+                Just (CoreSize str) ->
+                    benchShow opts cfg
+                        { title = Just str }
+                        (makeGraphs str)
+                        (ghcDumpdirName ++ "/" ++ str ++ ".core-sizes.csv")
+                        ghcDumpdirName
                 Nothing ->
                     error "Please specify a benchmark using --benchmark."
