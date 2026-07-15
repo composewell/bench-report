@@ -3,7 +3,10 @@ with nixpack.mkSources;
 {
 layers = [
 {
-  bench-report = localOpts ./. ["--flag no-charts"] ["--flags no-charts"];
+  bench-report = local ./.
+    // { c2nix = ["--flag no-charts"];
+         flags = ["--flags no-charts"];
+       };
 }
 ];
 }
