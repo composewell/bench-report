@@ -12,17 +12,11 @@ module BenchReport
 where
 
 import Control.Exception (catch, ErrorCall(..))
-import Control.Monad (mzero)
-import Control.Monad.IO.Class (liftIO)
-import Control.Monad.Trans.Maybe
-import Control.Monad.Trans.State
 import Data.Char (toLower)
-import Data.List (isSuffixOf, sortOn)
-import System.Environment (getArgs)
+import Data.List (sortOn)
 #ifdef NO_CHARTS
 import System.IO (hPutStrLn, stderr)
 #endif
-import Text.Read (readMaybe)
 
 #ifdef NO_CHARTS
 import BenchShow.Internal.Common
@@ -32,7 +26,7 @@ import BenchShow
 #endif
 
 ------------------------------------------------------------------------------
--- Command line parsing
+-- Options
 ------------------------------------------------------------------------------
 
 data BenchType
@@ -53,124 +47,6 @@ data Options = Options
 
 defaultOptions :: Options
 defaultOptions = Options False False False Nothing ["time"] PercentDiff 0
-
-setGenGraphs :: Monad m => Bool -> StateT (a, Options) m ()
-setGenGraphs val = do
-    (args, opts) <- get
-    put (args, opts { genGraphs = val })
-
-setSortByName :: Monad m => Bool -> StateT (a, Options) m ()
-setSortByName val = do
-    (args, opts) <- get
-    put (args, opts { sortByName = val })
-
-setUseGauge :: Monad m => Bool -> StateT (a, Options) m ()
-setUseGauge val = do
-    (args, opts) <- get
-    put (args, opts { useGauge = val })
-
-setBenchType :: Monad m => BenchType -> StateT (a, Options) m ()
-setBenchType val = do
-    (args, opts) <- get
-    put (args, opts { benchType = Just val })
-
-setFields :: Monad m => [String] -> StateT (a, Options) m ()
-setFields val = do
-    (args, opts) <- get
-    put (args, opts { fields = val })
-
-setDiff :: Monad m => String -> StateT (a, Options) m ()
-setDiff val = do
-    (args, opts) <- get
-    let cmpStyle =
-            case val of
-                "absolute" -> Absolute
-                "multiples" -> Multiples
-                "percent" -> PercentDiff
-                x -> error $ "Unknown diff option: " ++ show x
-     in put (args, opts { diffStyle = cmpStyle })
-
-setCutOff :: Monad m => String -> StateT (a, Options) m ()
-setCutOff val = do
-    (args, opts) <- get
-    case readMaybe val of
-        Just x -> put (args, opts { cutOffPercent = x })
-        Nothing -> error $ "Invalid cutoff value: " ++ show val
-
--- Like the shell "shift" to shift the command line arguments
-shift :: StateT ([String], Options) (MaybeT IO) (Maybe String)
-shift = do
-    s <- get
-    case s of
-        ([], _) -> return Nothing
-        (x : xs, opts) -> put (xs, opts) >> return (Just x)
-
-parseBench :: StateT ([String], Options) (MaybeT IO) ()
-parseBench = do
-    x <- shift
-    case x of
-        Just str | "_cmp" `isSuffixOf` str -> setBenchType (Compare str)
-        Just str -> setBenchType (Standard str)
-        Nothing -> do
-                liftIO $ putStrLn "please provide a benchmark type "
-                mzero
-
-parseFields :: StateT ([String], Options) (MaybeT IO) ()
-parseFields = do
-    x <- shift
-    case x of
-        Just str -> setFields (words str)
-        Nothing -> do
-                liftIO $ putStrLn
-                    "please provide a list of fields after --fields"
-                mzero
-
-parseDiff :: StateT ([String], Options) (MaybeT IO) ()
-parseDiff = do
-    x <- shift
-    case x of
-        Just str -> setDiff str
-        Nothing -> do
-                liftIO $ putStrLn "please provide a diff type"
-                mzero
-
-parseCutOff :: StateT ([String], Options) (MaybeT IO) ()
-parseCutOff = do
-    x <- shift
-    case x of
-        Just str -> setCutOff str
-        Nothing -> do
-                liftIO $ putStrLn "please provide a cutoff percent"
-                mzero
-
--- totally imperative style option parsing
-parseOptions :: IO (Maybe Options)
-parseOptions = do
-    args <- getArgs
-    runMaybeT $ flip evalStateT (args, defaultOptions) $ do
-        parseLoop
-        fmap snd get
-
-    where
-
-    parseOpt opt =
-        case opt of
-            "--graphs" -> setGenGraphs True
-            "--sort-by-name" -> setSortByName True
-            "--use-gauge" -> setUseGauge True
-            "--benchmark" -> parseBench
-            "--fields" -> parseFields
-            "--diff-style" -> parseDiff
-            "--diff-cutoff-percent" -> parseCutOff
-            str -> do
-                liftIO $ putStrLn $ "Unrecognized option " <> str
-                mzero
-
-    parseLoop = do
-        next <- shift
-        case next of
-            Just opt -> parseOpt opt >> parseLoop
-            Nothing -> return ()
 
 ignoringErr :: IO () -> IO ()
 ignoringErr a = catch a (\(ErrorCall err :: ErrorCall) ->
