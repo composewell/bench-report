@@ -23,8 +23,8 @@ source-repository-package
 
 jobs: 1
 
-package bench-report
-   flags: +no-charts
-
-package bench-show
-   flags: +no-charts
+-- package bench-report
+--    flags: +no-charts
+-- 
+-- package bench-show
+--    flags: +no-charts
