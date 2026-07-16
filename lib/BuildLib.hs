@@ -1,4 +1,3 @@
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 
 module BuildLib
@@ -33,12 +32,13 @@ import Control.Monad.Trans.Reader (ReaderT, asks)
 import Data.List (nub, sort, intercalate, isSuffixOf)
 import Data.Map (Map)
 import Data.Maybe (mapMaybe)
-import Streamly.Coreutils.Which (which)
+import Coreutils.Which (which)
 import Streamly.Unicode.String (str)
 
 import qualified Data.List as List
 import qualified Data.Map as Map
-import qualified Streamly.Coreutils.FileTest as Test
+import qualified Coreutils.FileTest as Test
+import qualified Streamly.FileSystem.Path as Path
 
 import Utils
 
@@ -226,8 +226,8 @@ cabalWhichBuilddir  builddir packageNameWithVersion component cmdToFind = do
             else ""
         ghc = [str|#{builddir}/build/*/ghc-#{env_GHC_VERSION}|]
         co = [str|#{component}/#{cmdToFind}#{noopt}/build/#{cmdToFind}/#{cmdToFind}|]
-        path = [str|#{ghc}/#{packageNameWithVersion}/#{co}|]
-    truePath <- liftIO $ toLastLine [str|echo #{path}|]
+        pth = [str|#{ghc}/#{packageNameWithVersion}/#{co}|]
+    truePath <- liftIO $ toLastLine [str|echo #{pth}|]
     -- liftIO $ run [str|echo [cabal_which "$truePath"] 1>&2|]
     liftIO $ toLastLine [str|test -f "#{truePath}" && echo #{truePath}|]
 
@@ -241,7 +241,7 @@ cabalTargetProg :: HasConfig e =>
 cabalTargetProg packageNameWithVersion component target = do
     targetProg <- cabalWhich packageNameWithVersion component target
     -- XXX Check if executable
-    res <- liftIO $ Test.test targetProg Test.isExisting
+    res <- liftIO $ Test.test (Path.fromString_ targetProg) Test.doesItExist
     if res
     then return (Just targetProg)
     else return Nothing

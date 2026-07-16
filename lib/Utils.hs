@@ -1,4 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module Utils
     ( die
@@ -29,11 +30,11 @@ import System.Environment (getExecutablePath)
 import Streamly.System.Process (ProcessFailure)
 import Streamly.Unicode.String (str)
 
+import qualified Coreutils.Sh as Sh
 import qualified System.Exit as Exit (die)
 import qualified Streamly.Data.Fold as Fold
 import qualified Streamly.Data.Stream as Stream
 import qualified Streamly.Data.Parser as Parser (wordWithQuotes)
-import qualified Streamly.Coreutils.Sh as Sh
 
 --------------------------------------------------------------------------------
 -- String prettifying utilities
@@ -90,7 +91,7 @@ toStdoutV :: String -> IO ()
 toStdoutV cmd = putStrLn cmd >> Sh.toStdout cmd
 
 toLines :: String -> Stream.Stream IO String
-toLines cmd = Sh.toLines Fold.toList cmd
+toLines = Sh.toLines Fold.toList
 
 toLastLine :: String -> IO String
 toLastLine cmd = fmap fromJust (toLines cmd & Stream.fold Fold.latest)

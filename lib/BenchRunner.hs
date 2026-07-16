@@ -1,4 +1,3 @@
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -30,10 +29,11 @@ import BenchReport (ghcDumpdirName)
 import qualified BenchReport
 import qualified Data.Map as Map
 import qualified Options.Applicative as OptParse
-import qualified Streamly.Coreutils.FileTest as Test
+import qualified Coreutils.Directory as Coreutils
+import qualified Coreutils.FileTest as Test
 import qualified Streamly.Data.Fold as Fold
 import qualified Streamly.Data.Stream as Stream
-import qualified Streamly.System.Command as Cmd
+import qualified Streamly.FileSystem.Path as Path
 
 import Utils
 import BuildLib
@@ -123,8 +123,7 @@ defaultConfig =
         , bconfig_APPEND = False
         , bconfig_COMMIT_COMPARE = False
         , bconfig_BENCHMARK_PACKAGE_NAME = "streamly-benchmarks"
-        -- XXX This is same as ALL_FIELDS
-        , bconfig_FIELDS = ["cputime", "allocated", "maxrss"]
+        , bconfig_FIELDS = []
         , bconfig_BENCH_CUTOFF_PERCENT = 0
         , bconfig_BENCH_DIFF_STYLE = PercentDiff
         , bconfig_SORT_BY_NAME = False
@@ -132,7 +131,7 @@ defaultConfig =
         , bconfig_SILENT = False
         , bconfig_RAW = False
         , bconfig_MEASURE = True
-        , bconfig_ALL_FIELDS = ["cputime", "allocated", "maxrss"]
+        , bconfig_ALL_FIELDS = []
         , bconfig_INFINITE_GRP =
               [ TGroup "infinite_grp"
               ]
@@ -153,7 +152,8 @@ targetsFromString xs = Right $ map stringToTarget $ words xs
 
 cliOptions :: OptParse.Parser Configuration
 cliOptions = do
-    Configuration <$> pure False -- switch (long "dev-build")
+    Configuration
+        <$> pure False -- switch (long "dev-build")
         <*> pure (bconfig_GROUP_TARGETS defaultConfig)
         <*> pure (bconfig_COMPARISONS defaultConfig)
         <*> pure (bconfig_INDIVIDUAL_TARGETS defaultConfig)
@@ -188,7 +188,8 @@ cliOptions = do
         <*> (words
                  <$> strOption
                        (long "fields"
-                            <> value (unwords (bconfig_FIELDS defaultConfig))))
+                            <> help "Defaults to all the supported fields"
+                            <> value ""))
         <*> (read
                  <$> strOption
                        (long "diff-cutoff-percent"
@@ -384,7 +385,7 @@ backupOutputFile :: String -> Context ()
 backupOutputFile benchName = do
     let outputFile = benchOutputFile benchName
     append <- asks bconfig_APPEND
-    exists <- liftIO $ Test.test outputFile Test.isExisting
+    exists <- liftIO $ Test.test (Path.fromString_ outputFile) Test.doesItExist
     when (not append && exists)
         $ liftIO $ toStdout [str|mv -f -v #{outputFile} #{outputFile}.prev|]
 
@@ -393,12 +394,23 @@ getGhcDumpdirPath = do
     -- cabal runs ghc from where the cabal file is, so relative dumpdir
     -- path will be relative to that. So use absolute path to keep it in the
     -- project root.
-    projectRoot <- Cmd.toString "pwd"
-    -- XXX ensure there is no space at the end of projectRoot
-    pure $ [str|#{projectRoot}/#{ghcDumpdirName}|]
+    projectRoot <- Path.toString <$> Coreutils.pwd
+    pure [str|#{projectRoot}/#{ghcDumpdirName}|]
 
 coreSizeCsvSuffix :: String
 coreSizeCsvSuffix = ".core-sizes.csv"
+
+-- | The name of "core-size" field in the csv file.
+coreSizeFields :: [String]
+coreSizeFields = ["core-size"]
+
+-- | Fields in the benchmark results csv.
+benchFields :: [String]
+benchFields = ["cputime", "allocated", "maxrss"]
+
+-- | Depends on whether we are using core-size csv file or perf results csv.
+availableFields :: Bool -> [String]
+availableFields coreSizes = if coreSizes then coreSizeFields else benchFields
 
 getCoreSizeFiles :: Context (String, [String])
 getCoreSizeFiles = do
@@ -413,7 +425,7 @@ backupCoreSizes :: Context ()
 backupCoreSizes = do
     append <- asks bconfig_APPEND
     (dumpdir, files) <- getCoreSizeFiles
-    when (not append)
+    unless append
         $ for_ files
         $ \f -> liftIO $ toStdout [str|mv -f -v #{dumpdir}/#{f} #{dumpdir}/#{f}.bak|]
 
@@ -449,7 +461,7 @@ runMeasurements targets = do
     else do
         liftIO $ runBuild buildBench benchPackageName "bench" targets
         -- XXX What is target_exe_extra_args here?
-        when (not coreSizes) $ runBenchTargets benchPackageName "b" targets
+        unless coreSizes $ runBenchTargets benchPackageName "b" targets
 
 runReports :: (String -> BenchReport.BenchType) -> [String] -> Context ()
 runReports mkBenchType items = do
@@ -488,7 +500,7 @@ printHelpOnArgs = do
         putStr "Supported fields: "
         putStrLn $ unwords allFields
         putStr "Default fields: "
-        putStrLn $ unwords $ bconfig_FIELDS defaultConfig
+        putStrLn $ unwords allFields
     return $ hasItem "help" fields || hasItem (TIndividual "help") targets
 
 -------------------------------------------------------------------------------
@@ -611,9 +623,16 @@ mainWith targetMap speedOpts rtsOpts = do
     let grpTargets = getGroupTargets "_grp" benchTargetMap
     let indTargets = map fst benchTargetMap
     let cmps = getGroupTargets "_cmp" benchTargetMap
+    let allFields = availableFields (bconfig_CORE_SIZES conf)
+        fields =
+            case bconfig_FIELDS conf of
+                [] -> allFields
+                xs -> xs
     let conf1 =
             conf
-              { bconfig_TARGETS = targets
+              { bconfig_FIELDS = fields
+              , bconfig_ALL_FIELDS = allFields
+              , bconfig_TARGETS = targets
               , bconfig_GROUP_TARGETS = grpTargets
               , bconfig_INDIVIDUAL_TARGETS = indTargets
               , bconfig_COMPARISONS = cmps

@@ -1,4 +1,3 @@
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
@@ -24,7 +23,8 @@ import Streamly.Unicode.String (str)
 
 import qualified Data.Map as Map
 import qualified Options.Applicative as OptParse
-import qualified Streamly.Coreutils.FileTest as FileTest
+import qualified Coreutils.FileTest as FileTest
+import qualified Streamly.FileSystem.Path as Path
 
 import Utils
 import BuildLib
@@ -296,8 +296,8 @@ runFinalReports = do
         xs <- mapM getTixFile (catIndividuals targets)
         -- Some tix files are genuinely not generated
         -- Remove non-existing files otherwise hpc fails
-        xs1 <- liftIO $ mapM checkFile xs
-        let tixFiles = unwords $ catMaybes xs1
+        xs1 <- liftIO $ mapM (checkFile . Path.fromString_) xs
+        let tixFiles = unwords $ map Path.toString $ catMaybes xs1
         buildDir <- asks bconfig_BUILD_DIR
         let allTix = [str|#{buildDir}/hpc/all.tix|]
         -- XXX allTix/tixFiles cannot have double quotes in it
@@ -320,11 +320,11 @@ runFinalReports = do
         where
 
         checkFile fp = do
-            r <- FileTest.test fp FileTest.isExisting
+            r <- FileTest.test fp FileTest.doesItExist
             if r
             then return $ Just fp
             else do
-                putStrLn $ "WARNING! Ignoring non-existing tix file " ++ fp
+                putStrLn $ "WARNING! Ignoring non-existing tix file " ++ Path.toString fp
                 return Nothing
 
 --------------------------------------------------------------------------------

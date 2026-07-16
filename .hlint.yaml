@@ -1,0 +1,22 @@
+# HLint configuration file
+# https://github.com/ndmitchell/hlint
+
+# The str quasiquoter (Streamly.Unicode.String) uses "/*" style path globs
+# in some interpolated strings. HLint's default CPP preprocessing (cpphs)
+# strips "/* ... */" as C-style comments, corrupting those quasiquotes and
+# causing spurious parse errors. --cpp-simple avoids that behaviour.
+- arguments:
+    [ --cpp-simple ]
+
+# This codebase intentionally uses SCREAMING_SNAKE / snake_case identifiers
+# for config fields and env-like names (e.g. bconfig_BUILD_DIR,
+# env_SCRIPT_DIR).
+- ignore: {name: "Use camelCase"}
+
+# cliOptions builds a Configuration via a uniform one-field-per-line
+# "<$> ... <*> ... <*> ..." applicative chain that lines up visually with
+# the Configuration record fields, even where a leading field or two is a
+# `pure`. Collapsing those into the record constructor (as HLint suggests)
+# breaks that alignment and makes the chain harder to read/maintain.
+- ignore: {name: "Redundant <$>", within: BenchRunner}
+- ignore: {name: "Use <$>", within: BenchRunner}

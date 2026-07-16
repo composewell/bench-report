@@ -116,8 +116,7 @@ selectBench Options{..} f =
                 Left _ -> either error id $ f (ColumnIndex 0) (Just PercentDiff)
                 Right xs -> filter (filterPred . snd) xs
     in reverse
-           $ fmap fst
-           $ sortFunc colVals
+           $ fst <$> sortFunc colVals
 
     where
 

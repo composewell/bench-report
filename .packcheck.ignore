@@ -1,6 +1,7 @@
 .packcheck.ignore
 .github/workflows/packcheck.yml
 .gitignore
+.hlint.yaml
 bin/bench-runner.sh
 bin/build-lib.sh
 cabal.project
