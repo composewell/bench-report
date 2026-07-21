@@ -262,7 +262,7 @@ runMeasurements :: [String] -> Context ()
 runMeasurements targets = do
     buildCmd <- getBuildCommand
     benchPackageName <- asks bconfig_BENCHMARK_PACKAGE_NAME
-    liftIO $ runBuild buildCmd benchPackageName "test" targets
+    liftIO $ runBuild Nothing buildCmd benchPackageName "test" targets
 
     coverage <- asks bconfig_COVERAGE
     when coverage $ do

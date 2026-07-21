@@ -12,10 +12,13 @@ where
 --------------------------------------------------------------------------------
 
 import BenchShow.Internal.Common (GroupStyle(..))
-import Control.Exception (catch, throwIO)
+import Control.Exception (catch, catches, throwIO, Handler(..))
 import Control.Monad (when, unless, void)
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad.Trans.Reader (ReaderT, asks, runReaderT)
+import Control.Monad.Trans.Reader (ReaderT, ask, asks, runReaderT)
+import Data.IORef (IORef, newIORef, readIORef, modifyIORef')
+import System.Exit (ExitCode(..), exitWith)
+import System.IO.Unsafe (unsafePerformIO)
 import Data.Foldable (for_)
 import Data.Function ((&))
 import Data.List (isSuffixOf)
@@ -80,6 +83,11 @@ data Configuration =
         , bconfig_CORE_SIZES :: Bool
         , bconfig_BENCH_SPEED_OPTIONS :: String -> String -> Maybe Quickness
         , bconfig_BENCH_RTS_OPTIONS :: String -> String -> String
+        , bconfig_KEEP_GOING :: Bool
+        -- | Count of failures tolerated due to @--keep-going@. Used to exit
+        -- with a non-zero status at the end of the run. Always overwritten
+        -- with a fresh ref in 'mainWith'.
+        , bconfig_FAILURES :: IORef Int
         }
 
 instance HasConfig Configuration where
@@ -139,7 +147,17 @@ defaultConfig =
         , bconfig_CORE_SIZES = False
         , bconfig_BENCH_SPEED_OPTIONS = \_ _ -> Nothing
         , bconfig_BENCH_RTS_OPTIONS = \_ _ -> ""
+        , bconfig_KEEP_GOING = False
+        , bconfig_FAILURES = placeholderFailureRef
         }
+
+-- | Placeholder failure counter used to satisfy the pure 'defaultConfig' and
+-- the CLI parser. 'mainWith' always replaces it with a freshly created ref
+-- before the pipeline runs, so this shared ref is never actually used to track
+-- a run.
+{-# NOINLINE placeholderFailureRef #-}
+placeholderFailureRef :: IORef Int
+placeholderFailureRef = unsafePerformIO (newIORef 0)
 
 type Context a = ReaderT Configuration IO a
 
@@ -212,6 +230,12 @@ cliOptions = do
         <*> switch (long "core-sizes")
         <*> pure (bconfig_BENCH_SPEED_OPTIONS defaultConfig)
         <*> pure (bconfig_BENCH_RTS_OPTIONS defaultConfig)
+        <*> switch
+              (long "keep-going"
+                   <> help "Continue running remaining benchmarks/targets even \
+                           \if some fail, instead of aborting immediately. The \
+                           \process still exits non-zero if any failed.")
+        <*> pure (bconfig_FAILURES defaultConfig)
 
     where
 
@@ -238,6 +262,33 @@ benchOutputFile benchName = "charts" </> benchName </> "results.csv"
 --------------------------------------------------------------------------------
 -- Determine options from benchmark name
 --------------------------------------------------------------------------------
+
+-- | Run a benchmark action, tolerating failures when @--keep-going@ is set. On
+-- failure the error is reported and execution continues with the next item;
+-- otherwise the failure propagates and aborts the process as before. The label
+-- argument identifies the failing item (target or benchmark) in the warning.
+tolerateError :: String -> Context () -> Context ()
+tolerateError label act = do
+    keepGoing <- asks bconfig_KEEP_GOING
+    if not keepGoing
+    then act
+    else do
+        conf <- ask
+        let ref = bconfig_FAILURES conf
+        liftIO $ runReaderT act conf `catches`
+            [ Handler $ \(e :: ProcessFailure) -> warnContinue ref (show e)
+            -- A `die` raises ExitFailure, catch that too.
+            , Handler $ \e -> case e of
+                  ExitSuccess -> throwIO e
+                  ExitFailure _ -> warnContinue ref (show e)
+            ]
+
+    where
+
+    warnContinue ref msg = do
+        putStrLn
+            [str|Warning: benchmark failed for [#{label}] (#{msg}), continuing due to --keep-going|]
+        modifyIORef' ref (+ 1)
 
 benchExecOne :: String -> String -> String -> Context ()
 benchExecOne benchExecPath benchName otherOptions = do
@@ -353,7 +404,8 @@ invokeTastyBench targetProg targetName outputFile = do
         liftIO ((toLines cmd & Stream.fold Fold.toList) `catch` onErr)
     when (null benchmarkNames)
         $ liftIO $ putStrLn $ "No benchmarks returned by the command: " ++ cmd
-    for_ benchmarkNames $ \name -> benchExecOne targetProg name gaugeArgs
+    for_ benchmarkNames
+        $ \name -> tolerateError name $ benchExecOne targetProg name gaugeArgs
 
 runBenchTarget :: String -> String -> String -> Context ()
 runBenchTarget packageName component targetName = do
@@ -376,7 +428,8 @@ runBenchTarget packageName component targetName = do
 
 runBenchTargets :: String -> String -> [String] -> Context ()
 runBenchTargets packageName component targets =
-    for_ targets $ runBenchTarget packageName component
+    for_ targets
+        $ \t -> tolerateError t $ runBenchTarget packageName component t
 
 runBenchesComparing :: [String] -> Context ()
 runBenchesComparing _ = undefined
@@ -456,10 +509,16 @@ runMeasurements targets = do
     commitCompare <- asks bconfig_COMMIT_COMPARE
     buildBench <- getBuildCommand
     benchPackageName <- asks bconfig_BENCHMARK_PACKAGE_NAME
+    keepGoing <- asks bconfig_KEEP_GOING
+    failRef <- asks bconfig_FAILURES
+    let onBuildError =
+            if keepGoing
+            then Just (modifyIORef' failRef (+ 1))
+            else Nothing
     if commitCompare
     then runBenchesComparing targets
     else do
-        liftIO $ runBuild buildBench benchPackageName "bench" targets
+        liftIO $ runBuild onBuildError buildBench benchPackageName "bench" targets
         -- XXX What is target_exe_extra_args here?
         unless coreSizes $ runBenchTargets benchPackageName "b" targets
 
@@ -616,6 +675,7 @@ mainWith targetMap speedOpts rtsOpts = do
             "A helper tool for benchmarking"
             cliOptions
             empty
+    failureRef <- newIORef (0 :: Int)
     (cabalExe, buildDir) <- getCabalExe
     ghcVer <- getGhcVersion $ config_CABAL_WITH_COMPILER conf
     targets <- flagLongSetup conf
@@ -641,5 +701,18 @@ mainWith targetMap speedOpts rtsOpts = do
               , bconfig_BUILD_DIR = buildDir
               , bconfig_CABAL_EXECUTABLE = cabalExe
               , bconfig_GHC_VERSION = ghcVer
+              , bconfig_FAILURES = failureRef
               }
     void $ runReaderT runPipeline conf1
+    -- Under --keep-going we tolerate failures during the run but still report
+    -- the overall outcome: a summary line plus a non-zero exit status if any
+    -- target or benchmark failed.
+    failures <- readIORef failureRef
+    if failures > 0
+    then do
+        let n = show failures
+        putStrLn
+            [str|Error: #{n} target(s)/benchmark(s) failed during the run.|]
+        exitWith (ExitFailure 1)
+    else when (bconfig_KEEP_GOING conf1)
+        $ putStrLn "All targets/benchmarks completed successfully."

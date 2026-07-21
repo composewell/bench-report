@@ -1,4 +1,5 @@
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module BuildLib
     ( hasItem
@@ -26,9 +27,11 @@ module BuildLib
 -- Imports
 --------------------------------------------------------------------------------
 
+import Control.Exception (catch)
 import Control.Monad (unless)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Reader (ReaderT, asks)
+import Streamly.System.Process (ProcessFailure(..))
 import Data.List (nub, sort, intercalate, isSuffixOf)
 import Data.Map (Map)
 import Data.Maybe (mapMaybe)
@@ -261,8 +264,13 @@ getCabalExe = do
 getGhcVersion :: String -> IO String
 getGhcVersion ghc = liftIO $ toLastLine [str|#{ghc} --numeric-version|]
 
-runBuild :: String -> String -> String -> [String] -> IO ()
-runBuild buildProg package componentPrefix components = do
+-- | Build the given components serially. When @mOnError@ is @Just record@ a
+-- build failure of a single component is reported, @record@ is invoked, and the
+-- build proceeds with the next component (keep-going mode). When it is
+-- @Nothing@ a build failure aborts the whole process.
+runBuild ::
+    Maybe (IO ()) -> String -> String -> String -> [String] -> IO ()
+runBuild mOnError buildProg package componentPrefix components = do
     let componentsWithContext =
             map (\c -> [str|#{package}:#{componentPrefix}:#{c}|]) components
     {-
@@ -271,4 +279,18 @@ runBuild buildProg package componentPrefix components = do
     -}
     -- Build the targets serially, one at a time so that we can see the ghc
     -- memory stats to find out memory used by each target
-    mapM_ (\x -> toStdoutV [str|#{buildProg} #{x}|]) componentsWithContext
+    mapM_ build componentsWithContext
+
+    where
+
+    build x =
+        let cmd = [str|#{buildProg} #{x}|]
+            onErr record (e :: ProcessFailure) =
+                let err = show e
+                 in do
+                        putStrLn
+                            [str|Warning: build failed for [#{x}] (#{err}), continuing due to --keep-going|]
+                        record
+         in case mOnError of
+                Nothing -> toStdoutV cmd
+                Just record -> toStdoutV cmd `catch` onErr record
